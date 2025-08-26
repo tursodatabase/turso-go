@@ -32,8 +32,8 @@ esac
 PLATFORM="${OS}_${ARCH}"
 
 case "$OS" in
-  linux)   OUTPUT_NAME="lib${LIB_BASENAME}.so" ;;
-  darwin)  OUTPUT_NAME="lib${LIB_BASENAME}.dylib" ;;
+  linux)   OUTPUT_NAME="lib_${LIB_BASENAME}.so" ;;
+  darwin)  OUTPUT_NAME="lib_${LIB_BASENAME}.dylib" ;;
   windows) OUTPUT_NAME="${LIB_BASENAME}.dll" ;;
 esac
 
