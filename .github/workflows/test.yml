@@ -1,4 +1,4 @@
-name: Tests
+name: Run Tests
 
 on:
   push:
@@ -10,42 +10,52 @@ on:
 jobs:
   test:
     name: Go tests on ${{ matrix.name }}
-    # Only run this matrix leg if its libray exists
-    if: ${{ hashFiles(matrix.lib_glob) != '' || hashFiles(matrix.fallback_glob) != '' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: linux_amd64
             os: ubuntu-latest
-            lib_glob: bindings/go/libs/linux_amd64/lib_turso_go.so
-            fallback_glob: libs/linux_amd64/lib_turso_go.so
-          - name: linux_arm64
-            os: ubuntu-24.04-arm64
-            lib_glob: bindings/go/libs/linux_arm64/lib_turso_go.so
-            fallback_glob: libs/linux_arm64/lib_turso_go.so
+            lib_relpath: libs/linux_amd64/lib_turso_go.so
           - name: macos_amd64
             os: macos-13
-            lib_glob: bindings/go/libs/darwin_amd64/lib_turso_go.dylib
-            fallback_glob: libs/darwin_amd64/lib_turso_go.dylib
+            lib_relpath: libs/darwin_amd64/lib_turso_go.dylib
           - name: macos_arm64
             os: macos-14
-            lib_glob: bindings/go/libs/darwin_arm64/lib_turso_go.dylib
-            fallback_glob: libs/darwin_arm64/lib_turso_go.dylib
+            lib_relpath: libs/darwin_arm64/lib_turso_go.dylib
           - name: windows_amd64
             os: windows-latest
-            lib_glob: bindings/go/libs/windows_amd64/lib_turso_go.dll
-            fallback_glob: libs/windows_amd64/lib_turso_go.dll
+            lib_relpath: libs/windows_amd64/_turso_go.dll
 
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Probe platform library
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          p="${{ matrix.lib_relpath }}"
+          echo "Looking for ${p}"
+          if [ -f "${p}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Library not found; this leg will be skipped."
+          fi
+
       - uses: actions/setup-go@v5
+        if: steps.probe.outputs.present == 'true'
         with:
           go-version: "1.23.x"
           check-latest: true
 
       - name: Run Go tests
+        if: steps.probe.outputs.present == 'true'
         run: go test -v ./...
+
+      - name: Skipped (no platform lib)
+        if: steps.probe.outputs.present != 'true'
+        run: echo "No ${{ matrix.lib_relpath }} present; skipping."
