@@ -51,14 +51,14 @@ jobs:
           workspaces: |
             . -> target
 
-      - name: Make script executable (POSIX)
+      - name: Make script executable in POSIX environments
         if: runner.os != 'Windows'
         run: chmod +x ./build_lib.sh
 
       - name: Build cdylib (release)
         shell: ${{ matrix.shell }}
         run: |
-          ./build_lib.sh release
+          ./build_lib.sh
           echo "After build, libs/ contains:"
           find libs -maxdepth 2 -type f || true
 

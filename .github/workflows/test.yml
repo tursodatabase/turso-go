@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    tags: [v*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runner: ubuntu-latest
+            shell: bash
+          - os: macos-14
+            runner: macos-14
+            shell: bash
+          - os: macos-13
+            runner: macos-13
+            shell: bash
+          - os: windows-latest
+            runner: windows-latest
+            shell: bash
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          check-latest: true
+
+      - name: Set GOOS/GOARCH
+        run: |
+          go env -w GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+          go version && go env
+
+      - name: Run Go tests
+        run: go test -v ./...
