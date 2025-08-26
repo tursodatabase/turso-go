@@ -1,0 +1,109 @@
+name: Build & Publish Prebuilt Libraries
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: build-libs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runner: ubuntu-latest
+            shell: bash
+          - os: macos-14
+            runner: macos-14
+            shell: bash
+          - os: macos-13
+            runner: macos-13
+            shell: bash
+          - os: windows-latest
+            runner: windows-latest
+            shell: bash
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Make script executable (POSIX)
+        if: runner.os != 'Windows'
+        run: chmod +x ./build_lib.sh
+
+      - name: Build cdylib (release)
+        shell: ${{ matrix.shell }}
+        run: |
+          ./build_lib.sh release
+          echo "After build, libs/ contains:"
+          find libs -maxdepth 2 -type f || true
+
+      - name: Upload libs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libs-${{ runner.os }}
+          path: libs
+          if-no-files-found: error
+
+  publish:
+    name: Aggregate & PR commit
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all libs
+        uses: actions/download-artifact@v4
+        with:
+          path: _libs_artifacts
+
+      - name: Merge libs into repo
+        run: |
+          shopt -s globstar
+          rsync -av --ignore-existing _libs_artifacts/**/libs/ libs/
+          echo "Merged libs layout:"
+          find libs -maxdepth 2 -type f || true
+
+      - name: Create PR with updated libs
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(libs): update prebuilt libs for ${{ github.ref_name }}"
+          title: "Update prebuilt libs for ${{ github.ref_name }}"
+          body: |
+            This PR adds/updates prebuilt native libraries under `libs/` for:
+            - Linux x64
+            - macOS arm64
+            - macOS x64
+            - Windows x64
+            Built via `./build_lib.sh release`.
+          branch: ci/update-libs/${{ github.ref_name }}
+          delete-branch: true
+          signoff: false
