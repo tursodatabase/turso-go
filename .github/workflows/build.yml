@@ -79,13 +79,26 @@ jobs:
           path: _libs_artifacts
 
       - name: Merge libs into repo
+        shell: bash
         run: |
-          shopt -s globstar
+          set -euo pipefail
+          shopt -s nullglob
           mkdir -p libs
-
-          rsync -a _libs_artifacts/* libs/
+          echo "Downloaded artifact roots:"
+          find _libs_artifacts -maxdepth 1 -mindepth 1 -type d -printf " - %f\n"
+          for src in \
+            _libs_artifacts/*/{linux_*,darwin_*,windows_*} \
+            _libs_artifacts/*/libs/{linux_*,darwin_*,windows_*}
+          do
+            [ -d "$src" ] || continue
+            plat="$(basename "$src")"
+            dest="libs/${plat}"
+            echo "Syncing $src -> $dest"
+            mkdir -p "$dest"
+            rsync -a "$src/." "$dest/"
+          done
           echo "Merged libs layout:"
-          find libs -maxdepth 2 -type f || true
+          find libs -maxdepth 2 -type f -print
 
       - name: Create PR with updated libs
         uses: peter-evans/create-pull-request@v6
