@@ -1,4 +1,9 @@
-# Turso driver for Go's `database/sql` library
+# Turso-DB Go driver
+
+<p align="center">
+  <img src="assets/turso.png" alt="Turso Database" width="800"/>
+  <h1 align="center">Turso Database</h1>
+</p>
 
 **NOTE:** This driver, like `turso` itself, is currently in Alpha and is not yet in a usable production ready state.
 
@@ -14,10 +19,7 @@ To build with embedded library support, follow these steps:
 
 ```bash
 # Clone the repository
-git clone https://github.com/tursodatabase/turso
-
-# Navigate to the Go bindings directory
-cd turso/bindings/go
+git clone https://github.com/tursodatabase/turso-go
 
 # Build the library (defaults to release build)
 ./build_lib.sh
@@ -48,6 +50,7 @@ If the embedded library cannot be found or extracted, the driver will fall back 
 
 Build the driver with the embedded library as described above, then simply import and use. No environment variables needed!
 
+
 ### Option 2: Manual library setup
 
 #### Linux | MacOS
@@ -66,7 +69,7 @@ export LD_LIBRARY_PATH="REPO/target/debug:$LD_LIBRARY_PATH"
 #### Windows
 
 ```
-cargo build --package turso-go
+cargo build
 
 # You must add turso's `target/debug` directory to your PATH
 # or you could built + copy the .dll to a location in your PATH

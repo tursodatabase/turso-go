@@ -37,10 +37,5 @@ jobs:
           go-version: "1.23.x"
           check-latest: true
 
-      - name: Set GOOS/GOARCH
-        run: |
-          go env -w GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
-          go version && go env
-
       - name: Run Go tests
         run: go test -v ./...
