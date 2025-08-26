@@ -2,7 +2,6 @@
 name = "turso-go"
 edition = "2024"
 authors = ["The Turso Authors"]
-license = "Apache-2.0"
 license = "MIT"
 
 [lib]
