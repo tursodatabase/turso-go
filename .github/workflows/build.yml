@@ -3,8 +3,7 @@ name: Build & Publish Prebuilt Libraries
 on:
   workflow_dispatch: {}
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -20,21 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            runner: ubuntu-latest
-            shell: bash
-          - os: macos-14
-            runner: macos-14
-            shell: bash
-          - os: macos-13
-            runner: macos-13
-            shell: bash
-          - os: windows-latest
-            runner: windows-latest
-            shell: bash
+        os: [ubuntu-latest, macos-14, macos-13, windows-latest]
 
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -51,14 +38,15 @@ jobs:
           workspaces: |
             . -> target
 
-      - name: Make script executable in POSIX environments
+      - name: Make script executable (POSIX)
         if: runner.os != 'Windows'
         run: chmod +x ./build_lib.sh
 
       - name: Build cdylib (release)
-        shell: ${{ matrix.shell }}
+        # Force Git Bash on Windows; bash on POSIX is default
+        shell: bash
         run: |
-          ./build_lib.sh
+          ./build_lib.sh release
           echo "After build, libs/ contains:"
           find libs -maxdepth 2 -type f || true
 
@@ -88,7 +76,8 @@ jobs:
       - name: Merge libs into repo
         run: |
           shopt -s globstar
-          rsync -av --ignore-existing _libs_artifacts/**/libs/ libs/
+          mkdir -p libs
+          rsync -a _libs_artifacts/**/libs/ libs/
           echo "Merged libs layout:"
           find libs -maxdepth 2 -type f || true
 
@@ -98,11 +87,12 @@ jobs:
           commit-message: "chore(libs): update prebuilt libs for ${{ github.ref_name }}"
           title: "Update prebuilt libs for ${{ github.ref_name }}"
           body: |
-            This PR adds/updates prebuilt native libraries under `libs/` for:
+            This PR updates prebuilt native libraries under `libs/` for:
             - Linux x64
             - macOS arm64
             - macOS x64
             - Windows x64
+
             Built via `./build_lib.sh release`.
           branch: ci/update-libs/${{ github.ref_name }}
           delete-branch: true
