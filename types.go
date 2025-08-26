@@ -67,7 +67,6 @@ func (rc ResultCode) String() string {
 
 const (
 	driverName            = "turso"
-	libName               = "lib_turso_go"
 	RowsClosedErr         = "sql: Rows closed"
 	FfiDbOpen             = "db_open"
 	FfiDbClose            = "db_close"

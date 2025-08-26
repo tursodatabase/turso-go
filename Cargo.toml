@@ -5,7 +5,7 @@ authors = ["The Turso Authors"]
 license = "MIT"
 
 [lib]
-name = "_turso_go"
+name = "turso_go"
 crate-type = ["cdylib"]
 path = "rs_src/lib.rs"
 

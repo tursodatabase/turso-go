@@ -52,11 +52,11 @@ func extractEmbeddedLibrary() (string, error) {
 
 		switch runtime.GOOS {
 		case "darwin":
-			libName = "lib_turso_go.dylib"
+			libName = "libturso_go.dylib"
 		case "linux":
-			libName = "lib_turso_go.so"
+			libName = "libturso_go.so"
 		case "windows":
-			libName = "lib_turso_go.dll"
+			libName = "turso_go.dll"
 		default:
 			extractErr = fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 			return

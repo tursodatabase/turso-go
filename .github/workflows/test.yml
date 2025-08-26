@@ -16,16 +16,16 @@ jobs:
         include:
           - name: linux_amd64
             os: ubuntu-latest
-            lib_relpath: libs/linux_amd64/lib_turso_go.so
+            lib_relpath: libs/linux_amd64/libturso_go.so
           - name: macos_amd64
             os: macos-13
-            lib_relpath: libs/darwin_amd64/lib_turso_go.dylib
+            lib_relpath: libs/darwin_amd64/libturso_go.dylib
           - name: macos_arm64
             os: macos-14
-            lib_relpath: libs/darwin_arm64/lib_turso_go.dylib
+            lib_relpath: libs/darwin_arm64/libturso_go.dylib
           - name: windows_amd64
             os: windows-latest
-            lib_relpath: libs/windows_amd64/_turso_go.dll
+            lib_relpath: libs/windows_amd64/turso_go.dll
 
     runs-on: ${{ matrix.os }}
 

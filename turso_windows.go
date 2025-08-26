@@ -11,6 +11,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const libName = "turso_go"
+
 func loadLibrary() (uintptr, error) {
 	// Try to extract embedded library first
 	libPath, err := extractEmbeddedLibrary()

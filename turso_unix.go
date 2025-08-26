@@ -12,6 +12,8 @@ import (
 	"github.com/ebitengine/purego"
 )
 
+const libName = "libturso_go"
+
 func loadLibrary() (uintptr, error) {
 	// Try to extract embedded library first
 	libPath, err := extractEmbeddedLibrary()
