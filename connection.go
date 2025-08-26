@@ -1,4 +1,4 @@
-package turso
+package turso_go
 
 import (
 	"context"

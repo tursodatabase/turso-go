@@ -49,6 +49,7 @@ If the embedded library cannot be found or extracted, the driver will fall back 
 Build the driver with the embedded library as described above, then simply import and use. No environment variables needed!
 
 
+
 ### Option 2: Manual library setup
 
 #### Linux | MacOS
@@ -60,7 +61,7 @@ cargo build --release
 
 # Your LD_LIBRARY_PATH environment variable must include `target/release` directory
 
-export LD_LIBRARY_PATH="REPO/target/debug:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="REPO/target/release:$LD_LIBRARY_PATH"
 
 ```
 
@@ -69,13 +70,14 @@ export LD_LIBRARY_PATH="REPO/target/debug:$LD_LIBRARY_PATH"
 ```
 cargo build
 
-# You must add turso's `target/debug` directory to your PATH
+# You must add turso's `target/release` directory to your PATH
 # or you could built + copy the .dll to a location in your PATH
 # or just the CWD of your go module
 
-cp path\to\turso\target\debug\lib_turso_go.dll .
+cp turso-go\target\release\turso_go.dll .
 
 go test
+
 
 ```
 **Temporarily** you may have to clone the turso repository and run:
@@ -86,7 +88,7 @@ go test
 import (
     "fmt"
     "database/sql"
-    _"github.com/tursodatabase/turso"
+    _"github.com/tursodatabase/turso-go"
 )
 
 func main() {

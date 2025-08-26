@@ -1,4 +1,4 @@
-package turso_test
+package turso_go_test
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	_ "github.com/tursodatabase/turso"
+	_ "github.com/tursodatabase/turso-go"
 )
 
 var (

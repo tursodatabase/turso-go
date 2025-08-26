@@ -1,6 +1,6 @@
 //go:build windows
 
-package turso
+package turso_go
 
 import (
 	"fmt"

@@ -21,7 +21,7 @@
 // The embedded library is extracted to a user-specific temporary directory and
 // loaded dynamically. If extraction fails, the code falls back to the traditional
 // method of searching system paths.
-package turso
+package turso_go
 
 import (
 	"embed"

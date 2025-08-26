@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package turso
+package turso_go
 
 import (
 	"fmt"
