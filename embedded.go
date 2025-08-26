@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -79,55 +80,52 @@ func extractEmbeddedLibrary() (string, error) {
 		// Create platform directory string
 		platformDir = fmt.Sprintf("%s_%s", runtime.GOOS, archSuffix)
 
-		// Create a unique temporary directory for the current user
-		tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("turso-go-%d", os.Getuid()))
-		if err := os.MkdirAll(tempDir, 0755); err != nil {
-			extractErr = fmt.Errorf("failed to create temp directory: %w", err)
+		embedPath := path.Join("libs", platformDir, libName)
+
+		// TODO: remove this debug print
+		entries, _ := embeddedLibs.ReadDir(path.Join("libs", platformDir))
+		for _, e := range entries {
+			fmt.Println("embedded:", e.Name())
+		}
+		// pick a stable per-user cache dir; then use OS-specific separators
+		cacheRoot, _ := os.UserCacheDir()
+		if cacheRoot == "" {
+			cacheRoot = os.TempDir()
+		}
+		destDir := filepath.Join(cacheRoot, "turso-go", platformDir)
+		if err := os.MkdirAll(destDir, 0o755); err != nil {
+			extractErr = fmt.Errorf("mkdir %s: %w", destDir, err)
+			return
+		}
+		extractedPath = filepath.Join(destDir, libName)
+
+		// reuse if already extracted
+		if fi, err := os.Stat(extractedPath); err == nil && fi.Size() > 0 {
 			return
 		}
 
-		// Path to the library within the embedded filesystem
-		libPath := filepath.Join("libs", platformDir, libName)
-
-		// Where the library will be extracted
-		extractedPath = filepath.Join(tempDir, libName)
-
-		// Check if library already exists and is valid
-		if stat, err := os.Stat(extractedPath); err == nil && stat.Size() > 0 {
-			// Library already exists, nothing to do
-			return
-		}
-
-		// Open the embedded library
-		embeddedLib, err := embeddedLibs.Open(libPath)
+		// open from embed, write to disk
+		in, err := embeddedLibs.Open(embedPath)
 		if err != nil {
-			extractErr = fmt.Errorf("failed to open embedded library %s: %w", libPath, err)
+			extractErr = fmt.Errorf("open embedded %s: %w", embedPath, err)
 			return
 		}
-		defer embeddedLib.Close()
+		defer in.Close()
 
-		// Create the output file
-		outFile, err := os.Create(extractedPath)
+		out, err := os.Create(extractedPath)
 		if err != nil {
-			extractErr = fmt.Errorf("failed to create output file: %w", err)
+			extractErr = fmt.Errorf("create %s: %w", extractedPath, err)
 			return
 		}
-		defer outFile.Close()
+		defer out.Close()
 
-		// Copy the library to the temporary directory
-		if _, err := io.Copy(outFile, embeddedLib); err != nil {
-			extractErr = fmt.Errorf("failed to extract library: %w", err)
+		if _, err := io.Copy(out, in); err != nil {
+			extractErr = fmt.Errorf("copy: %w", err)
 			return
 		}
-
-		// On Unix systems, make the library executable
 		if runtime.GOOS != "windows" {
-			if err := os.Chmod(extractedPath, 0755); err != nil {
-				extractErr = fmt.Errorf("failed to make library executable: %w", err)
-				return
-			}
+			_ = os.Chmod(extractedPath, 0o755)
 		}
 	})
-
 	return extractedPath, extractErr
 }
