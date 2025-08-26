@@ -1,62 +1,57 @@
-#!/bin/bash
-# bindings/go/build_lib.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+BUILD_TYPE="${1:-release}"
+CRATE_PACKAGE="${CRATE_PACKAGE:-turso-go}"
+LIB_BASENAME="${LIB_BASENAME:-turso_go}"
+GO_LIB_DIR="${GO_LIB_DIR:-libs}"
 
-# Accept build type as parameter, default to release
-BUILD_TYPE=${1:-release}
+if [[ "$BUILD_TYPE" == "release" ]]; then
+  CARGO_ARGS=(--release)
+  TARGET_DIR="release"
+else
+  CARGO_ARGS=()
+  TARGET_DIR="debug"
+fi
 
-echo "Building turso Go library for current platform (build type: $BUILD_TYPE)..."
-
-UNAME_S=$(uname -s)
-UNAME_M=$(uname -m)
+UNAME_S="$(uname -s)"
+UNAME_M="$(uname -m)"
 
 case "$UNAME_M" in
-  x86_64)          ARCH=amd64 ;;
-  arm64|aarch64)   ARCH=arm64 ;;
-  i386|i686)       ARCH=386   ;;
+  x86_64) ARCH=amd64 ;;
+  arm64|aarch64) ARCH=arm64 ;;
+  i386|i686) ARCH=386 ;;
   *) echo "Unsupported arch: $UNAME_M"; exit 1 ;;
 esac
-
 case "$UNAME_S" in
-  Darwin*)
-    OUTPUT_NAME="libturso_go.dylib"
-    PLATFORM="darwin_${ARCH}"
-    ;;
-  Linux*)
-    OUTPUT_NAME="libturso_go.so"
-    PLATFORM="linux_${ARCH}"
-    ;;
-  MINGW*|MSYS*|CYGWIN*)
-    OUTPUT_NAME="turso_go.dll"
-    if [ "$ARCH" = "amd64" ]; then
-      PLATFORM="windows_amd64"
-    else
-      PLATFORM="windows_386"
-    fi
-    ;;
-  *)
-    echo "Unsupported platform: $UNAME_S"
-    exit 1
-    ;;
+  Linux*)  OS=linux  ;;
+  Darwin*) OS=darwin ;;
+  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
+  *) echo "Unsupported OS: $UNAME_S"; exit 1 ;;
+esac
+PLATFORM="${OS}_${ARCH}"
+
+case "$OS" in
+  linux)   OUTPUT_NAME="lib${LIB_BASENAME}.so" ;;
+  darwin)  OUTPUT_NAME="lib${LIB_BASENAME}.dylib" ;;
+  windows) OUTPUT_NAME="${LIB_BASENAME}.dll" ;;
 esac
 
-OUTPUT_DIR="libs/${PLATFORM}"
-mkdir -p "$OUTPUT_DIR"
+echo "Building ${CRATE_PACKAGE} ($BUILD_TYPE) for ${PLATFORM}…"
+cargo build "${CARGO_ARGS[@]}" --package "${CRATE_PACKAGE}"
 
-# Build the library
-cargo build ${CARGO_ARGS} --package turso-go
+OUT_DIR="target/${TARGET_DIR}"
+ART="${OUT_DIR}/${OUTPUT_NAME}"
 
-# Verify expected artifact exists
-ART="target/${TARGET_DIR}/${OUTPUT_NAME}"
-if [ ! -f "$ART" ]; then
+if [[ ! -f "$ART" ]]; then
   echo "Expected artifact not found: $ART"
-  echo "Available files in target/${TARGET_DIR}:"
-  find "target/${TARGET_DIR}" -maxdepth 1 -type f -printf "%f\n" 2>/dev/null || ls -la "target/${TARGET_DIR}"
+  echo "Contents of ${OUT_DIR}:"
+  ls -la "${OUT_DIR}" || true
   exit 1
 fi
 
-mkdir -p "libs/${PLATFORM}"
-cp "$ART" "libs/${PLATFORM}/"
+DEST="${GO_LIB_DIR}/${PLATFORM}"
+mkdir -p "${DEST}"
+cp -f "${ART}" "${DEST}/"
 
-echo "Library built successfully for $PLATFORM ($BUILD_TYPE build)"
+echo "Wrote ${DEST}/$(basename "$ART")"
