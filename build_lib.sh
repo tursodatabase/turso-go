@@ -34,7 +34,7 @@ PLATFORM="${OS}_${ARCH}"
 case "$OS" in
   linux)   OUTPUT_NAME="lib_${LIB_BASENAME}.so" ;;
   darwin)  OUTPUT_NAME="lib_${LIB_BASENAME}.dylib" ;;
-  windows) OUTPUT_NAME="${LIB_BASENAME}.dll" ;;
+  windows) OUTPUT_NAME="_${LIB_BASENAME}.dll" ;;
 esac
 
 echo "Building ${CRATE_PACKAGE} ($BUILD_TYPE) for ${PLATFORM}…"
