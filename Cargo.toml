@@ -1,0 +1,11 @@
+[package]
+name = "turso-go"
+edition = "2024"
+
+[lib]
+name = "_turso_go"
+crate-type = ["cdylib"]
+path = "rs_src/lib.rs"
+
+[dependencies]
+turso_core = "0.1.4"
