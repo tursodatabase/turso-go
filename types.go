@@ -72,6 +72,8 @@ const (
 	FfiDbClose            = "db_close"
 	FfiDbPrepare          = "db_prepare"
 	FfiDbGetError         = "db_get_error"
+	FfiConnLastInsertId   = "stmt_last_insert_id"
+	FfiConnChanges        = "stmt_changes"
 	FfiStmtExec           = "stmt_execute"
 	FfiStmtQuery          = "stmt_query"
 	FfiStmtParameterCount = "stmt_parameter_count"

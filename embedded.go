@@ -82,24 +82,30 @@ func extractEmbeddedLibrary() (string, error) {
 
 		embedPath := path.Join("libs", platformDir, libName)
 
-		// TODO: remove this debug print
-		entries, _ := embeddedLibs.ReadDir(path.Join("libs", platformDir))
-		for _, e := range entries {
-			fmt.Println("embedded:", e.Name())
-		}
-		// pick a stable per-user cache dir; then use OS-specific separators
-		cacheRoot, _ := os.UserCacheDir()
+		cacheRoot := os.Getenv("TURSO_GO_CACHE_DIR")
 		if cacheRoot == "" {
-			cacheRoot = os.TempDir()
+			if d, err := os.UserCacheDir(); err == nil {
+				cacheRoot = d
+			} else {
+				cacheRoot = os.TempDir()
+			}
 		}
 		destDir := filepath.Join(cacheRoot, "turso-go", platformDir)
+
+		if os.Getenv("TURSO_GO_NOCACHE") == "1" {
+			d, err := os.MkdirTemp("", "turso-go-*")
+			if err != nil {
+				extractErr = fmt.Errorf("mktemp: %w", err)
+				return
+			}
+			destDir = d
+		}
 		if err := os.MkdirAll(destDir, 0o755); err != nil {
 			extractErr = fmt.Errorf("mkdir %s: %w", destDir, err)
 			return
 		}
 		extractedPath = filepath.Join(destDir, libName)
 
-		// reuse if already extracted
 		if fi, err := os.Stat(extractedPath); err == nil && fi.Size() > 0 {
 			return
 		}
