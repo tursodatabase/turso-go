@@ -58,12 +58,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          plat="$(find libs -mindepth 1 -maxdepth 1 -type d -printf '%f\n')"
-          if [[ -z "$plat" || $(echo "$plat" | wc -l) -ne 1 ]]; then
-            echo "Expected exactly one platform dir in libs/, got:"
-            find libs -mindepth 1 -maxdepth 1 -type d -printf ' - %f\n'
+          shopt -s nullglob
+          dirs=(libs/*/)
+          if (( ${#dirs[@]} != 1 )); then
+            echo "Expected exactly one platform dir in libs/, found:"
+            for d in "${dirs[@]}"; do echo " - ${d#libs/}"; done
             exit 1
           fi
+          plat="${dirs[0]%/}"; plat="${plat#libs/}"
           echo "dir=$plat" >> "$GITHUB_OUTPUT"
           echo "Platform dir: $plat"
 
@@ -94,15 +96,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
           mkdir -p libs
+          echo "Downloaded artifact roots:"
           for d in _libs_artifacts/*; do
-            plat="$(basename "$d")"
-            echo "Syncing $d -> libs/$plat"
-            mkdir -p "libs/$plat"
-            rsync -a "$d/." "libs/$plat/"
+            [ -d "$d" ] && echo " - $(basename "$d")"
           done
+          for src in _libs_artifacts/*; do
+            [ -d "$src" ] || continue
+            plat="$(basename "$src")"
+            dest="libs/$plat"
+            echo "Syncing $src -> $dest"
+            mkdir -p "$dest"
+            rsync -a "$src"/ "$dest"/
+          done
+
           echo "Merged libs layout:"
-          find libs -maxdepth 2 -type f -print
+          for f in libs/*/*; do [ -f "$f" ] && echo "$f"; done
 
       - name: Skip if no libs changed
         shell: bash
@@ -112,6 +122,33 @@ jobs:
             echo "No changes under libs/; skipping PR."
             exit 0
           fi
+
+      - name: Generate & print SHA256 sums
+        shell: bash
+        run: |
+          set -euo pipefail
+          calc() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | awk '{print $1}'
+            elif command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$1" | awk '{print $1}'
+            elif command -v openssl >/dev/null 2>&1; then
+              openssl dgst -sha256 "$1" | awk '{print $2}'
+            else
+              echo "No SHA-256 tool available" >&2; exit 1
+            fi
+          }
+          : > libs/MANIFEST-SHA256.txt
+          echo "SHA256 checksums:"
+          shopt -s nullglob
+          for f in libs/*/*.so libs/*/*.dylib libs/*/*.dll; do
+            [ -f "$f" ] || continue
+            sum="$(calc "$f")"
+            rel="${f#libs/}"
+            printf "%s  %s\n" "$sum" "$rel" | tee -a libs/MANIFEST-SHA256.txt
+            printf "%s\n" "$sum" > "${f}.sha256"
+          done
+          echo "Wrote libs/MANIFEST-SHA256.txt and per-file .sha256 sidecars."
 
       - name: Create PR with updated libs
         uses: peter-evans/create-pull-request@v6
