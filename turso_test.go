@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"testing"
+	"time"
 
 	_ "github.com/tursodatabase/turso-go"
 )
@@ -15,6 +16,16 @@ var (
 	conn    *sql.DB
 	connErr error
 )
+
+func openMem(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("turso", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
 
 func TestMain(m *testing.M) {
 	conn, connErr = sql.Open("turso", ":memory:")
@@ -146,11 +157,8 @@ func TestFunctions(t *testing.T) {
 }
 
 func TestDuplicateConnection(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
-	err = createTable(newConn)
+	newConn := openMem(t)
+	err := createTable(newConn)
 	if err != nil {
 		t.Fatalf("Error creating table: %v", err)
 	}
@@ -177,10 +185,7 @@ func TestDuplicateConnection(t *testing.T) {
 }
 
 func TestDuplicateConnection2(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
+	newConn := openMem(t)
 	sql := "CREATE TABLE test (foo INTEGER, bar INTEGER, baz BLOB);"
 	newConn.Exec(sql)
 	sql = "INSERT INTO test (foo, bar, baz) VALUES (?, ?, uuid4());"
@@ -209,14 +214,11 @@ func TestDuplicateConnection2(t *testing.T) {
 }
 
 func TestConnectionError(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
+	newConn := openMem(t)
 	sql := "CREATE TABLE test (foo INTEGER, bar INTEGER, baz BLOB);"
 	newConn.Exec(sql)
 	sql = "INSERT INTO test (foo, bar, baz) VALUES (?, ?, notafunction(?));"
-	_, err = newConn.Prepare(sql)
+	_, err := newConn.Prepare(sql)
 	if err == nil {
 		t.Fatalf("Expected error, got nil")
 	}
@@ -228,10 +230,7 @@ func TestConnectionError(t *testing.T) {
 }
 
 func TestStatementError(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
+	newConn := openMem(t)
 	sql := "CREATE TABLE test (foo INTEGER, bar INTEGER, baz BLOB);"
 	newConn.Exec(sql)
 	sql = "INSERT INTO test (foo, bar, baz) VALUES (?, ?, ?);"
@@ -250,13 +249,8 @@ func TestStatementError(t *testing.T) {
 }
 
 func TestDriverRowsErrorMessages(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	_, err = db.Exec("CREATE TABLE test (id INTEGER, name TEXT)")
+	db := openMem(t)
+	_, err := db.Exec("CREATE TABLE test (id INTEGER, name TEXT)")
 	if err != nil {
 		t.Fatalf("failed to create table: %v", err)
 	}
@@ -285,14 +279,9 @@ func TestDriverRowsErrorMessages(t *testing.T) {
 
 func TestTransaction(t *testing.T) {
 	// Open database connection
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening database: %v", err)
-	}
-	defer db.Close()
-
+	db := openMem(t)
 	// Create a test table
-	_, err = db.Exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
+	_, err := db.Exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
 	if err != nil {
 		t.Fatalf("Error creating table: %v", err)
 	}
@@ -359,14 +348,9 @@ func TestTransaction(t *testing.T) {
 }
 
 func TestVectorOperations(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening connection: %v", err)
-	}
-	defer db.Close()
-
+	db := openMem(t)
 	// Test creating table with vector columns
-	_, err = db.Exec(`CREATE TABLE vector_test (id INTEGER PRIMARY KEY, embedding F32_BLOB(64))`)
+	_, err := db.Exec(`CREATE TABLE vector_test (id INTEGER PRIMARY KEY, embedding F32_BLOB(64))`)
 	if err != nil {
 		t.Fatalf("Error creating vector table: %v", err)
 	}
@@ -397,14 +381,10 @@ func TestVectorOperations(t *testing.T) {
 }
 
 func TestSQLFeatures(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening connection: %v", err)
-	}
-	defer db.Close()
+	db := openMem(t)
 
 	// Create test tables
-	_, err = db.Exec(`
+	_, err := db.Exec(`
         CREATE TABLE customers (
             id INTEGER PRIMARY KEY,
             name TEXT,
@@ -501,15 +481,10 @@ func TestSQLFeatures(t *testing.T) {
 }
 
 func TestDateTimeFunctions(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening connection: %v", err)
-	}
-	defer db.Close()
-
+	db := openMem(t)
 	// Test date()
 	var dateStr string
-	err = db.QueryRow(`SELECT date('now')`).Scan(&dateStr)
+	err := db.QueryRow(`SELECT date('now')`).Scan(&dateStr)
 	if err != nil {
 		t.Fatalf("Error with date() function: %v", err)
 	}
@@ -536,15 +511,10 @@ func TestDateTimeFunctions(t *testing.T) {
 }
 
 func TestMathFunctions(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening connection: %v", err)
-	}
-	defer db.Close()
-
+	db := openMem(t)
 	// Test basic math functions
 	var result float64
-	err = db.QueryRow(`SELECT abs(-15.5)`).Scan(&result)
+	err := db.QueryRow(`SELECT abs(-15.5)`).Scan(&result)
 	if err != nil {
 		t.Fatalf("Error with abs function: %v", err)
 	}
@@ -572,15 +542,10 @@ func TestMathFunctions(t *testing.T) {
 }
 
 func TestJSONFunctions(t *testing.T) {
-	db, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening connection: %v", err)
-	}
-	defer db.Close()
-
+	db := openMem(t)
 	// Test json function
 	var valid int
-	err = db.QueryRow(`SELECT json_valid('{"name":"John","age":30}')`).Scan(&valid)
+	err := db.QueryRow(`SELECT json_valid('{"name":"John","age":30}')`).Scan(&valid)
 	if err != nil {
 		t.Fatalf("Error with json_valid function: %v", err)
 	}
@@ -610,10 +575,7 @@ func TestJSONFunctions(t *testing.T) {
 }
 
 func TestParameterOrdering(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
+	newConn := openMem(t)
 	sql := "CREATE TABLE test (a,b,c);"
 	newConn.Exec(sql)
 
@@ -685,12 +647,9 @@ func TestParameterOrdering(t *testing.T) {
 }
 
 func TestIndex(t *testing.T) {
-	newConn, err := sql.Open("turso", ":memory:")
-	if err != nil {
-		t.Fatalf("Error opening new connection: %v", err)
-	}
+	newConn := openMem(t)
 	sql := "CREATE TABLE users (name TEXT PRIMARY KEY, email TEXT)"
-	_, err = newConn.Exec(sql)
+	_, err := newConn.Exec(sql)
 	if err != nil {
 		t.Fatalf("Error creating table: %v", err)
 	}
@@ -771,4 +730,175 @@ func insertData(conn *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func TestNullHandling(t *testing.T) {
+	db := openMem(t)
+	_, err := db.Exec(`
+		CREATE TABLE null_test (
+			id INTEGER PRIMARY KEY,
+			text_val TEXT,
+			int_val INTEGER,
+			real_val REAL,
+			blob_val BLOB
+		)`)
+	if err != nil {
+		t.Fatalf("Error creating table: %v", err)
+	}
+
+	testCases := []struct {
+		name     string
+		query    string
+		args     []any
+		expected []any
+	}{
+		{"all nulls", "INSERT INTO null_test (id) VALUES (?)", []any{1}, []any{1, nil, nil, nil, nil}},
+		{"mixed nulls", "INSERT INTO null_test VALUES (?, ?, ?, ?, ?)", []any{2, "text", nil, 3.14, nil}, []any{2, "text", nil, 3.14, nil}},
+		{"no nulls", "INSERT INTO null_test VALUES (?, ?, ?, ?, ?)", []any{3, "full", 42, 2.718, []byte("data")}, []any{3, "full", 42, 2.718, []byte("data")}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := db.Exec(tc.query, tc.args...)
+			if err != nil {
+				t.Fatalf("Error inserting: %v", err)
+			}
+		})
+	}
+
+	rows, err := db.Query("SELECT * FROM null_test ORDER BY id")
+	if err != nil {
+		t.Fatalf("Error querying: %v", err)
+	}
+	defer rows.Close()
+
+	i := 0
+	for rows.Next() {
+		var id sql.NullInt64
+		var textVal sql.NullString
+		var intVal sql.NullInt64
+		var realVal sql.NullFloat64
+		var blobVal []byte
+
+		err := rows.Scan(&id, &textVal, &intVal, &realVal, &blobVal)
+		if err != nil {
+			t.Fatalf("Error scanning: %v", err)
+		}
+
+		if !id.Valid {
+			t.Errorf("ID should always be valid")
+		}
+		i++
+	}
+
+	if i != 3 {
+		t.Fatalf("Expected 3 rows, got %d", i)
+	}
+}
+
+func mustExec(t *testing.T, db *sql.DB, q string, args ...any) sql.Result {
+	t.Helper()
+	res, err := db.Exec(q, args...)
+	if err != nil {
+		t.Fatalf("exec %q: %v", q, err)
+	}
+	return res
+}
+
+func TestLastInsertIDAndRowsAffected(t *testing.T) {
+	db := openMem(t)
+	mustExec(t, db, `CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)`)
+	res := mustExec(t, db, `INSERT INTO t(name) VALUES ('alice')`)
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId: %v", err)
+	}
+	if id == 0 {
+		t.Fatalf("expected non-zero last insert id")
+	}
+	res = mustExec(t, db, `UPDATE t SET name='ALICE' WHERE id=?`, id)
+	ra, err := res.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected: %v", err)
+	}
+	if ra != 1 {
+		t.Fatalf("expected 1 row affected, got %d", ra)
+	}
+}
+
+func TestDataTypes(t *testing.T) {
+	db, err := sql.Open("turso", ":memory:")
+	if err != nil {
+		t.Fatalf("Error opening connection: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE types_test (
+			col_integer INTEGER,
+			col_real REAL,
+			col_text TEXT,
+			col_blob BLOB,
+			col_numeric NUMERIC,
+			col_boolean BOOLEAN,
+			col_date DATE,
+			col_datetime DATETIME,
+			col_timestamp TIMESTAMP
+		)`)
+	if err != nil {
+		t.Fatalf("Error creating table: %v", err)
+	}
+
+	// Insert test data
+	now := time.Now()
+	_, err = db.Exec(`
+		INSERT INTO types_test VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		42,
+		3.14159,
+		"Hello, 世界",
+		[]byte{0x01, 0x02, 0x03},
+		"123.456",
+		true,
+		now.Format("2006-01-02"),
+		now.Format("2006-01-02 15:04:05"),
+		now.Unix(),
+	)
+	if err != nil {
+		t.Fatalf("Error inserting: %v", err)
+	}
+
+	// Query and verify each type
+	var (
+		colInt       int
+		colReal      float64
+		colText      string
+		colBlob      []byte
+		colNumeric   string
+		colBool      bool
+		colDate      string
+		colDateTime  string
+		colTimestamp int64
+	)
+
+	err = db.QueryRow("SELECT * FROM types_test").Scan(
+		&colInt, &colReal, &colText, &colBlob, &colNumeric,
+		&colBool, &colDate, &colDateTime, &colTimestamp,
+	)
+	if err != nil {
+		t.Fatalf("Error scanning: %v", err)
+	}
+
+	// Verify values
+	if colInt != 42 {
+		t.Errorf("Integer mismatch: got %d", colInt)
+	}
+	if math.Abs(colReal-3.14159) > 0.00001 {
+		t.Errorf("Real mismatch: got %f", colReal)
+	}
+	if colText != "Hello, 世界" {
+		t.Errorf("Text mismatch: got %s", colText)
+	}
+	if !slices.Equal(colBlob, []byte{0x01, 0x02, 0x03}) {
+		t.Errorf("Blob mismatch: got %v", colBlob)
+	}
 }
