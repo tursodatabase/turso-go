@@ -1,6 +1,6 @@
+use crate::TursoConn;
 use crate::rows::TursoRows;
 use crate::types::{AllocPool, ResultCode, TursoValue};
-use crate::TursoConn;
 use std::ffi::{c_char, c_void};
 use std::num::NonZero;
 use turso_core::{LimboError, Statement, StepResult};
@@ -27,7 +27,7 @@ pub extern "C" fn db_prepare(ctx: *mut c_void, query: *const c_char) -> *mut c_v
 pub extern "C" fn stmt_execute(
     ctx: *mut c_void,
     args_ptr: *mut TursoValue,
-    arg_count: usize,
+    arg_count: i32,
     changes: *mut i64,
 ) -> ResultCode {
     if ctx.is_null() {
@@ -36,7 +36,7 @@ pub extern "C" fn stmt_execute(
     let stmt = TursoStatement::from_ptr(ctx);
 
     let args = if !args_ptr.is_null() && arg_count > 0 {
-        unsafe { std::slice::from_raw_parts(args_ptr, arg_count) }
+        unsafe { std::slice::from_raw_parts(args_ptr, arg_count as usize) }
     } else {
         &[]
     };
@@ -55,7 +55,7 @@ pub extern "C" fn stmt_execute(
                 return ResultCode::Error;
             }
             Ok(StepResult::Done) => {
-                let total_changes = stmt.conn.conn.total_changes();
+                let total_changes = statement.n_change();
                 if !changes.is_null() {
                     unsafe {
                         *changes = total_changes;
@@ -180,4 +180,50 @@ impl<'conn> TursoStatement<'conn> {
             std::ptr::null()
         }
     }
+}
+
+/// # Safety
+/// The caller is responsible for ensuring that `val` is a valid pointer,
+/// and that `ctx` is a valid pointer to a `TursoConn`.
+/// NOTE: this should be a "method" on the connection, but since it's called on "exec", we have the
+/// stmt context available
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn stmt_last_insert_id(ctx: *mut c_void, val: *mut i64) -> ResultCode {
+    if ctx.is_null() {
+        return ResultCode::Invalid;
+    }
+    let stmt = TursoStatement::from_ptr(ctx);
+    if val.is_null() {
+        let err = "provided value pointer is null";
+        stmt.err = Some(LimboError::InvalidArgument(err.to_string()));
+        return ResultCode::Invalid;
+    }
+    unsafe { *val = stmt.conn.conn.last_insert_rowid() }
+    ResultCode::Ok
+}
+
+/// # Safety
+/// The caller is responsible for ensuring that `val` is a valid pointer,
+/// and that `ctx` is a valid pointer to a `TursoConn`.
+/// NOTE: this should be a "method" on the connection, but since it's called on "exec", we have the
+/// stmt context available
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn stmt_changes(ctx: *mut c_void, val: *mut i64) -> ResultCode {
+    if ctx.is_null() {
+        return ResultCode::Invalid;
+    }
+    let stmt = TursoStatement::from_ptr(ctx);
+    if val.is_null() {
+        let err = "provided value pointer is null";
+        stmt.err = Some(LimboError::InvalidArgument(err.to_string()));
+        return ResultCode::Invalid;
+    }
+    if let Some(statement) = stmt.statement.as_ref() {
+        unsafe { *val = statement.n_change() }
+    } else {
+        let err = "statement is closed";
+        stmt.err = Some(LimboError::InternalError(err.to_string()));
+        return ResultCode::Error;
+    }
+    ResultCode::Ok
 }
