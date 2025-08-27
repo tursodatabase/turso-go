@@ -46,6 +46,10 @@ jobs:
             echo "Library not found; this leg will be skipped."
           fi
 
+      - name: Skipped (no platform lib)
+        if: steps.probe.outputs.present != 'true'
+        run: echo "No ${{ matrix.lib_relpath }} present; skipping."
+
       - uses: actions/setup-go@v5
         if: steps.probe.outputs.present == 'true'
         with:
@@ -55,7 +59,3 @@ jobs:
       - name: Run Go tests
         if: steps.probe.outputs.present == 'true'
         run: go test -v ./...
-
-      - name: Skipped (no platform lib)
-        if: steps.probe.outputs.present != 'true'
-        run: echo "No ${{ matrix.lib_relpath }} present; skipping."
