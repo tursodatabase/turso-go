@@ -29,6 +29,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Clean libs dir
+        shell: bash
+        run: rm -rf libs && mkdir -p libs
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -42,12 +46,6 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x ./build_lib.sh
 
-      - name: Show platform
-        shell: bash
-        run: |
-          uname -a || true
-          echo "Runner OS: ${{ runner.os }}"
-
       - name: Build cdylib (release)
         shell: bash
         run: |
@@ -55,11 +53,25 @@ jobs:
           echo "After build, libs/ contains:"
           find libs -maxdepth 2 -type f || true
 
-      - name: Upload libs artifact
+      - name: Discover platform dir
+        id: plat
+        shell: bash
+        run: |
+          set -euo pipefail
+          plat="$(find libs -mindepth 1 -maxdepth 1 -type d -printf '%f\n')"
+          if [[ -z "$plat" || $(echo "$plat" | wc -l) -ne 1 ]]; then
+            echo "Expected exactly one platform dir in libs/, got:"
+            find libs -mindepth 1 -maxdepth 1 -type d -printf ' - %f\n'
+            exit 1
+          fi
+          echo "dir=$plat" >> "$GITHUB_OUTPUT"
+          echo "Platform dir: $plat"
+
+      - name: Upload platform artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libs-${{ matrix.os }}
-          path: libs
+          name: ${{ steps.plat.outputs.dir }}
+          path: libs/${{ steps.plat.outputs.dir }}/
           if-no-files-found: error
 
   publish:
@@ -68,53 +80,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (full)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
 
-      - name: Download all libs
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: _libs_artifacts
+          merge-multiple: false
 
-      - name: Merge libs into repo
+      - name: Merge platform folders into repo
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
           mkdir -p libs
-          echo "Downloaded artifact roots:"
-          find _libs_artifacts -maxdepth 1 -mindepth 1 -type d -printf " - %f\n"
-          for src in \
-            _libs_artifacts/*/{linux_*,darwin_*,windows_*} \
-            _libs_artifacts/*/libs/{linux_*,darwin_*,windows_*}
-          do
-            [ -d "$src" ] || continue
-            plat="$(basename "$src")"
-            dest="libs/${plat}"
-            echo "Syncing $src -> $dest"
-            mkdir -p "$dest"
-            rsync -a "$src/." "$dest/"
+          for d in _libs_artifacts/*; do
+            plat="$(basename "$d")"
+            echo "Syncing $d -> libs/$plat"
+            mkdir -p "libs/$plat"
+            rsync -a "$d/." "libs/$plat/"
           done
           echo "Merged libs layout:"
           find libs -maxdepth 2 -type f -print
+
+      - name: Skip if no libs changed
+        shell: bash
+        run: |
+          git add -N libs || true
+          if git diff --quiet -- libs ; then
+            echo "No changes under libs/; skipping PR."
+            exit 0
+          fi
 
       - name: Create PR with updated libs
         uses: peter-evans/create-pull-request@v6
         with:
           base: ${{ github.event.repository.default_branch }}
+          branch: ci/update-libs/${{ github.event.repository.default_branch }}
           commit-message: "chore(libs): update prebuilt libs for ${{ github.ref_name }}"
           title: "Update prebuilt libs for ${{ github.ref_name }}"
           body: |
-            This PR updates prebuilt native libraries under `libs/` for:
-            - Linux x64
-            - macOS arm64
-            - macOS x64
-            - Windows x64
-
-            Built via `./build_lib.sh release`.
-          branch: ci/update-libs/${{ github.ref_name }}
+            Update prebuilt native libraries under `libs/` (built from ${{ github.sha }}).
           delete-branch: true
-          signoff: false
