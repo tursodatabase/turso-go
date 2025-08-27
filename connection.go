@@ -29,8 +29,10 @@ var (
 	loadErr           error
 	dbOpen            func(string) uintptr
 	dbClose           func(uintptr) uintptr
+	stmtLastInsertId  func(uintptr, uintptr) int32
 	connPrepare       func(uintptr, string) uintptr
 	connGetError      func(uintptr) uintptr
+	stmtChanges       func(uintptr, uintptr) int32
 	freeBlobFunc      func(uintptr)
 	freeStringFunc    func(uintptr)
 	rowsGetColumns    func(uintptr) int32
@@ -40,7 +42,7 @@ var (
 	closeRows         func(uintptr) uintptr
 	rowsNext          func(uintptr) uintptr
 	stmtQuery         func(stmtPtr uintptr, argsPtr uintptr, argCount uint64) uintptr
-	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount uint64, changes uintptr) int32
+	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount int32, changes uintptr) int32
 	stmtParamCount    func(uintptr) int32
 	stmtGetError      func(uintptr) uintptr
 	stmtClose         func(uintptr) int32
@@ -58,6 +60,8 @@ func ensureLibLoaded() error {
 		purego.RegisterLibFunc(&connPrepare, tursoLib, FfiDbPrepare)
 		purego.RegisterLibFunc(&connGetError, tursoLib, FfiDbGetError)
 		purego.RegisterLibFunc(&freeBlobFunc, tursoLib, FfiFreeBlob)
+		purego.RegisterLibFunc(&stmtLastInsertId, tursoLib, FfiConnLastInsertId)
+		purego.RegisterLibFunc(&stmtChanges, tursoLib, FfiConnChanges)
 		purego.RegisterLibFunc(&freeStringFunc, tursoLib, FfiFreeCString)
 		purego.RegisterLibFunc(&rowsGetColumns, tursoLib, FfiRowsGetColumns)
 		purego.RegisterLibFunc(&rowsGetColumnName, tursoLib, FfiRowsGetColumnName)
@@ -122,6 +126,27 @@ func (c *tursoConn) getError() error {
 	defer freeStringFunc(err)
 	cpy := fmt.Sprintf("%s", GoString(err))
 	return errors.New(cpy)
+}
+
+var errNoLastInsertID = errors.New("no LastInsertId available")
+
+type tursoResult struct {
+	lastID   int64
+	rows     int64
+	haveLast bool
+}
+
+var _ driver.Result = tursoResult{}
+
+func (r tursoResult) LastInsertId() (int64, error) {
+	if !r.haveLast {
+		return 0, errNoLastInsertID
+	}
+	return r.lastID, nil
+}
+
+func (r tursoResult) RowsAffected() (int64, error) {
+	return r.rows, nil
 }
 
 func (c *tursoConn) Prepare(query string) (driver.Stmt, error) {

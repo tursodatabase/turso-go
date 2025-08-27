@@ -60,13 +60,18 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	if argCount > 0 {
 		argPtr = uintptr(unsafe.Pointer(&argArray[0]))
 	}
-	var changes uint64
+	var changes int64
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
-	rc := stmtExec(ls.ctx, argPtr, argCount, uintptr(unsafe.Pointer(&changes)))
-	switch ResultCode(rc) {
+	res := stmtExec(ls.ctx, argPtr, int32(len(args)), uintptr(unsafe.Pointer(&changes)))
+	switch ResultCode(res) {
 	case Ok, Done:
-		return driver.RowsAffected(changes), nil
+		haveLast := false
+		var last int64
+		if rc := ResultCode(stmtLastInsertId(ls.ctx, uintptr(unsafe.Pointer(&last)))); rc == Ok {
+			haveLast = true
+		}
+		return tursoResult{lastID: last, haveLast: haveLast, rows: changes}, nil
 	case Error:
 		return nil, errors.New("error executing statement")
 	case Busy:
@@ -112,13 +117,17 @@ func (ls *tursoStmt) ExecContext(ctx context.Context, query string, args []drive
 		ls.mu.Unlock()
 		return nil, ctx.Err()
 	default:
-		var changes uint64
+		changes := int64(0)
 		defer ls.mu.Unlock()
-		res := stmtExec(ls.ctx, argArray, uint64(len(args)), uintptr(unsafe.Pointer(&changes)))
+		res := stmtExec(ls.ctx, argArray, int32(len(args)), uintptr(unsafe.Pointer(&changes)))
 		switch ResultCode(res) {
 		case Ok, Done:
-			changes := uint64(changes)
-			return driver.RowsAffected(changes), nil
+			haveLast := false
+			var last int64
+			if rc := ResultCode(stmtLastInsertId(ls.ctx, uintptr(unsafe.Pointer(&last)))); rc == Ok {
+				haveLast = true
+			}
+			return tursoResult{lastID: last, haveLast: haveLast, rows: changes}, nil
 		case Busy:
 			return nil, errors.New("Database is Busy")
 		case Interrupt:
