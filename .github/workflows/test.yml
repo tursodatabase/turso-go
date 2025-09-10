@@ -58,6 +58,8 @@ jobs:
 
       - name: Run Go tests
         if: steps.probe.outputs.present == 'true'
+        env:
+          TURSO_GO_NOCACHE: 1
         run: |
           ./build_lib.sh
-          TURSO_GO_NOCACHE=1 go test -v ./...
+           go test -v ./...
