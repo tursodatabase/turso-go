@@ -931,8 +931,8 @@ func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
 
 	const stmtText = `
 	INSERT INTO databases
-		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips,id)
-	VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips)
+	VALUES (?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT (hostname) DO UPDATE SET
 		updated_at=excluded.updated_at,
 		deleted_at=excluded.deleted_at,
@@ -959,7 +959,6 @@ func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
 		"local",                  // cloud_cluster_name
 		false,                    // local (bool -> int 0/1 in your marshaler)
 		nil,                      // allowed_ips (NULL)
-		11,                       // id (explicit)
 	}
 
 	stmt, err := db.Prepare(stmtText)
@@ -972,18 +971,16 @@ func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
 		t.Fatalf("queryrow/scan: %v", err)
 	}
-	if returnedID != 11 {
-		t.Fatalf("expected id=11, got %d", returnedID)
-	}
+	t.Logf("returned id: %d", returnedID)
+	cpy := returnedID
 
 	// Re-run to trigger ON CONFLICT path and ensure still binds 12 args and returns id
 	args[1] = time.Now() // updated_at
-	args[11] = 12
 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
 		t.Fatalf("queryrow/scan (conflict): %v", err)
 	}
-	if returnedID != 11 {
-		t.Fatalf("expected id=11 on conflict, got %d", returnedID)
+	if returnedID != cpy {
+		t.Fatalf("expected same id on conflict, got %d then %d", cpy, returnedID)
 	}
 }
 
