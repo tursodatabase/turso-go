@@ -58,4 +58,6 @@ jobs:
 
       - name: Run Go tests
         if: steps.probe.outputs.present == 'true'
-        run: go test -v ./...
+        run: |
+          ./build_lib.sh
+          go test -v ./...
