@@ -1,20 +1,23 @@
 use crate::{
-    types::{ResultCode, TursoValue},
     TursoConn,
+    types::{ResultCode, TursoValue},
 };
-use std::ffi::{c_char, c_void};
+use std::{
+    ffi::{c_char, c_void},
+    sync::{Arc, Mutex},
+};
 use turso_core::{LimboError, Statement, StepResult, Value};
 
 pub struct TursoRows<'conn> {
-    stmt: Box<Statement>,
+    stmt: Arc<Mutex<Statement>>,
     _conn: &'conn mut TursoConn,
     err: Option<LimboError>,
 }
 
 impl<'conn> TursoRows<'conn> {
-    pub fn new(stmt: Statement, conn: &'conn mut TursoConn) -> Self {
+    pub fn new(stmt: Arc<Mutex<Statement>>, conn: &'conn mut TursoConn) -> Self {
         TursoRows {
-            stmt: Box::new(stmt),
+            stmt,
             _conn: conn,
             err: None,
         }
@@ -50,24 +53,27 @@ pub extern "C" fn rows_next(ctx: *mut c_void) -> ResultCode {
         return ResultCode::Error;
     }
     let ctx = TursoRows::from_ptr(ctx);
-
-    match ctx.stmt.step() {
-        Ok(StepResult::Row) => ResultCode::Row,
-        Ok(StepResult::Done) => ResultCode::Done,
-        Ok(StepResult::IO) => {
-            let res = ctx.stmt.run_once();
-            if res.is_err() {
+    if let Ok(mut stmt) = ctx.stmt.lock() {
+        match stmt.step() {
+            Ok(StepResult::Row) => ResultCode::Row,
+            Ok(StepResult::Done) => ResultCode::Done,
+            Ok(StepResult::IO) => {
+                let res = stmt.run_once();
+                if res.is_err() {
+                    ResultCode::Error
+                } else {
+                    ResultCode::Io
+                }
+            }
+            Ok(StepResult::Busy) => ResultCode::Busy,
+            Ok(StepResult::Interrupt) => ResultCode::Interrupt,
+            Err(err) => {
+                ctx.err = Some(err);
                 ResultCode::Error
-            } else {
-                ResultCode::Io
             }
         }
-        Ok(StepResult::Busy) => ResultCode::Busy,
-        Ok(StepResult::Interrupt) => ResultCode::Interrupt,
-        Err(err) => {
-            ctx.err = Some(err);
-            ResultCode::Error
-        }
+    } else {
+        ResultCode::Error
     }
 }
 
@@ -78,9 +84,11 @@ pub extern "C" fn rows_get_value(ctx: *mut c_void, col_idx: usize) -> *const c_v
     }
     let ctx = TursoRows::from_ptr(ctx);
 
-    if let Some(row) = ctx.stmt.row() {
-        if let Ok(value) = row.get::<&Value>(col_idx) {
-            return TursoValue::from_db_value(value).to_ptr();
+    if let Ok(stmt) = ctx.stmt.lock() {
+        if let Some(row) = stmt.row() {
+            if let Ok(value) = row.get::<&Value>(col_idx) {
+                return TursoValue::from_db_value(value).to_ptr();
+            }
         }
     }
     std::ptr::null()
@@ -102,7 +110,11 @@ pub extern "C" fn rows_get_columns(rows_ptr: *mut c_void) -> i32 {
         return -1;
     }
     let rows = TursoRows::from_ptr(rows_ptr);
-    rows.stmt.num_columns() as i32
+    if let Ok(stmt) = rows.stmt.lock() {
+        stmt.num_columns() as i32
+    } else {
+        -1
+    }
 }
 
 /// Returns a pointer to a string with the name of the column at the given index.
@@ -114,12 +126,16 @@ pub extern "C" fn rows_get_column_name(rows_ptr: *mut c_void, idx: i32) -> *cons
         return std::ptr::null_mut();
     }
     let rows = TursoRows::from_ptr(rows_ptr);
-    if idx < 0 || idx as usize >= rows.stmt.num_columns() {
-        return std::ptr::null_mut();
+    if let Ok(stmt) = rows.stmt.lock() {
+        if idx < 0 || idx as usize >= stmt.num_columns() {
+            return std::ptr::null_mut();
+        }
+        let name = stmt.get_column_name(idx as usize);
+        let cstr = std::ffi::CString::new(name.as_bytes()).expect("Failed to create CString");
+        cstr.into_raw() as *const c_char
+    } else {
+        std::ptr::null_mut()
     }
-    let name = rows.stmt.get_column_name(idx as usize);
-    let cstr = std::ffi::CString::new(name.as_bytes()).expect("Failed to create CString");
-    cstr.into_raw() as *const c_char
 }
 
 #[unsafe(no_mangle)]
@@ -135,8 +151,10 @@ pub extern "C" fn rows_get_error(ctx: *mut c_void) -> *const c_char {
 pub extern "C" fn rows_close(ctx: *mut c_void) {
     if !ctx.is_null() {
         let rows = TursoRows::from_ptr(ctx);
-        rows.stmt.reset();
-        rows.err = None;
+        if let Ok(mut stmt) = rows.stmt.lock() {
+            stmt.reset();
+            rows.err = None;
+        }
     }
     unsafe {
         let _ = Box::from_raw(ctx.cast::<TursoRows>());

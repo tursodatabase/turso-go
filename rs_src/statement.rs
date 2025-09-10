@@ -3,6 +3,7 @@ use crate::rows::TursoRows;
 use crate::types::{AllocPool, ResultCode, TursoValue};
 use std::ffi::{c_char, c_void};
 use std::num::NonZero;
+use std::sync::{Arc, Mutex};
 use turso_core::{LimboError, Statement, StepResult};
 
 #[unsafe(no_mangle)]
@@ -15,7 +16,8 @@ pub extern "C" fn db_prepare(ctx: *mut c_void, query: *const c_char) -> *mut c_v
     let db = TursoConn::from_ptr(ctx);
     let stmt = db.conn.prepare(query_str);
     match stmt {
-        Ok(stmt) => TursoStatement::new(Some(stmt), db).to_ptr(),
+        #[allow(clippy::arc_with_non_send_sync)]
+        Ok(stmt) => TursoStatement::new(Arc::new(Mutex::new(stmt)), db).to_ptr(),
         Err(err) => {
             db.err = Some(err);
             std::ptr::null_mut()
@@ -41,7 +43,7 @@ pub extern "C" fn stmt_execute(
         &[]
     };
     let mut pool = AllocPool::new();
-    let Some(statement) = stmt.statement.as_mut() else {
+    let Ok(mut statement) = stmt.statement.lock() else {
         return ResultCode::Error;
     };
     for (i, arg) in args.iter().enumerate() {
@@ -52,6 +54,9 @@ pub extern "C" fn stmt_execute(
         match statement.step() {
             Ok(StepResult::Row) => {
                 // unexpected row during execution, error out.
+                stmt.err = Some(LimboError::InternalError(
+                    "Unexpected row returned during execute".to_string(),
+                ));
                 return ResultCode::Error;
             }
             Ok(StepResult::Done) => {
@@ -89,7 +94,7 @@ pub extern "C" fn stmt_parameter_count(ctx: *mut c_void) -> i32 {
         return -1;
     }
     let stmt = TursoStatement::from_ptr(ctx);
-    let Some(statement) = stmt.statement.as_ref() else {
+    let Ok(statement) = stmt.statement.lock() else {
         stmt.err = Some(LimboError::InternalError("Statement is closed".to_string()));
         return -1;
     };
@@ -112,20 +117,20 @@ pub extern "C" fn stmt_query(
         &[]
     };
     let mut pool = AllocPool::new();
-    let Some(mut statement) = stmt.statement.take() else {
-        return std::ptr::null_mut();
-    };
-    for (i, arg) in args.iter().enumerate() {
-        let val = arg.to_value(&mut pool);
-        statement.bind_at(NonZero::new(i + 1).unwrap(), val);
+    if let Ok(ref mut statement) = stmt.statement.lock() {
+        for (i, arg) in args.iter().enumerate() {
+            let val = arg.to_value(&mut pool);
+            statement.bind_at(NonZero::new(i + 1).unwrap(), val);
+        }
+        #[allow(clippy::arc_with_non_send_sync)]
+        TursoRows::new(stmt.statement.clone(), stmt.conn).to_ptr()
+    } else {
+        std::ptr::null_mut()
     }
-    // ownership of the statement is transferred to the TursoRows object.
-    TursoRows::new(statement, stmt.conn).to_ptr()
 }
 
 pub struct TursoStatement<'conn> {
-    /// If 'query' is ran on the statement, ownership is transferred to the TursoRows object
-    pub statement: Option<Statement>,
+    pub statement: Arc<Mutex<Statement>>,
     pub conn: &'conn mut TursoConn,
     pub err: Option<LimboError>,
 }
@@ -150,7 +155,7 @@ pub extern "C" fn stmt_get_error(ctx: *mut c_void) -> *const c_char {
 }
 
 impl<'conn> TursoStatement<'conn> {
-    pub fn new(statement: Option<Statement>, conn: &'conn mut TursoConn) -> Self {
+    pub fn new(statement: Arc<Mutex<Statement>>, conn: &'conn mut TursoConn) -> Self {
         TursoStatement {
             statement,
             conn,
@@ -218,7 +223,7 @@ pub unsafe extern "C" fn stmt_changes(ctx: *mut c_void, val: *mut i64) -> Result
         stmt.err = Some(LimboError::InvalidArgument(err.to_string()));
         return ResultCode::Invalid;
     }
-    if let Some(statement) = stmt.statement.as_ref() {
+    if let Ok(statement) = stmt.statement.lock() {
         unsafe { *val = statement.n_change() }
     } else {
         let err = "statement is closed";
