@@ -925,66 +925,67 @@ func createDatabasesTable(t *testing.T, db *sql.DB) {
 	}
 }
 
-// func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
-// 	db := openMem(t)
-// 	createDatabasesTable(t, db)
-//
-// 	const stmtText = `
-// 	INSERT INTO databases
-// 		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips,id)
-// 	VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-// 	ON CONFLICT (hostname) DO UPDATE SET
-// 		updated_at=excluded.updated_at,
-// 		deleted_at=excluded.deleted_at,
-// 		hostname=excluded.hostname,
-// 		namespace=excluded.namespace,
-// 		fly_app=excluded.fly_app,
-// 		address=excluded.address,
-// 		primary_address=excluded.primary_address,
-// 		cloud_cluster_name=excluded.cloud_cluster_name,
-// 		local=excluded.local,
-// 		allowed_ips=excluded.allowed_ips
-// 	RETURNING id`
-//
-// 	now := time.Now()
-// 	args := []any{
-// 		now,                      // created_at (driver will send RFC3339 string)
-// 		now,                      // updated_at
-// 		nil,                      // deleted_at
-// 		"host-1.local",           // hostname (unique)
-// 		"ns-123",                 // namespace
-// 		"app-xyz",                // fly_app
-// 		"http://127.0.0.1:10000", // address
-// 		"",                       // primary_address
-// 		"local",                  // cloud_cluster_name
-// 		false,                    // local (bool -> int 0/1 in your marshaler)
-// 		nil,                      // allowed_ips (NULL)
-// 		11,                       // id (explicit)
-// 	}
-//
-// 	stmt, err := db.Prepare(stmtText)
-// 	if err != nil {
-// 		t.Fatalf("prepare: %v", err)
-// 	}
-// 	defer stmt.Close()
-//
-// 	var returnedID int64
-// 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
-// 		t.Fatalf("queryrow/scan: %v", err)
-// 	}
-// 	if returnedID != 11 {
-// 		t.Fatalf("expected id=11, got %d", returnedID)
-// 	}
-//
-// 	// Re-run to trigger ON CONFLICT path and ensure still binds 12 args and returns id
-// 	args[1] = time.Now() // updated_at
-// 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
-// 		t.Fatalf("queryrow/scan (conflict): %v", err)
-// 	}
-// 	if returnedID != 11 {
-// 		t.Fatalf("expected id=11 on conflict, got %d", returnedID)
-// 	}
-// }
+func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
+	db := openMem(t)
+	createDatabasesTable(t, db)
+
+	const stmtText = `
+	INSERT INTO databases
+		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips,id)
+	VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+	ON CONFLICT (hostname) DO UPDATE SET
+		updated_at=excluded.updated_at,
+		deleted_at=excluded.deleted_at,
+		hostname=excluded.hostname,
+		namespace=excluded.namespace,
+		fly_app=excluded.fly_app,
+		address=excluded.address,
+		primary_address=excluded.primary_address,
+		cloud_cluster_name=excluded.cloud_cluster_name,
+		local=excluded.local,
+		allowed_ips=excluded.allowed_ips
+	RETURNING id`
+
+	now := time.Now()
+	args := []any{
+		now,                      // created_at (driver will send RFC3339 string)
+		now,                      // updated_at
+		nil,                      // deleted_at
+		"host-1.local",           // hostname (unique)
+		"ns-123",                 // namespace
+		"app-xyz",                // fly_app
+		"http://127.0.0.1:10000", // address
+		"",                       // primary_address
+		"local",                  // cloud_cluster_name
+		false,                    // local (bool -> int 0/1 in your marshaler)
+		nil,                      // allowed_ips (NULL)
+		11,                       // id (explicit)
+	}
+
+	stmt, err := db.Prepare(stmtText)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	defer stmt.Close()
+
+	var returnedID int64
+	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
+		t.Fatalf("queryrow/scan: %v", err)
+	}
+	if returnedID != 11 {
+		t.Fatalf("expected id=11, got %d", returnedID)
+	}
+
+	// Re-run to trigger ON CONFLICT path and ensure still binds 12 args and returns id
+	args[1] = time.Now() // updated_at
+	args[11] = 12
+	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
+		t.Fatalf("queryrow/scan (conflict): %v", err)
+	}
+	if returnedID != 11 {
+		t.Fatalf("expected id=11 on conflict, got %d", returnedID)
+	}
+}
 
 func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
 	db := openMem(t)
