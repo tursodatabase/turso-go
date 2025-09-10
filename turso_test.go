@@ -668,8 +668,8 @@ func TestIndex(t *testing.T) {
 	}
 
 	for filter, row := range map[string][]string{
-		"a@b.c": []string{"alice", "a@b.c"},
-		"b@d.e": []string{"bob", "b@d.e"},
+		"a@b.c": {"alice", "a@b.c"},
+		"b@d.e": {"bob", "b@d.e"},
 	} {
 		query := "SELECT * FROM users WHERE email = ?"
 		rows, err := newConn.Query(query, filter)
@@ -816,7 +816,7 @@ func TestLastInsertIDAndRowsAffected(t *testing.T) {
 	if id == 0 {
 		t.Fatalf("expected non-zero last insert id")
 	}
-	res = mustExec(t, db, `UPDATE t SET name='ALICE' WHERE id=?`, id)
+	res = mustExec(t, db, `UPDATE t SET name='ALICE' WHERE id = ?`, id)
 	ra, err := res.RowsAffected()
 	if err != nil {
 		t.Fatalf("RowsAffected: %v", err)
@@ -900,5 +900,128 @@ func TestDataTypes(t *testing.T) {
 	}
 	if !slices.Equal(colBlob, []byte{0x01, 0x02, 0x03}) {
 		t.Errorf("Blob mismatch: got %v", colBlob)
+	}
+}
+
+func createDatabasesTable(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec(`
+	CREATE TABLE IF NOT EXISTS databases (
+		id INTEGER PRIMARY KEY,
+		created_at TEXT,
+		updated_at TEXT,
+		deleted_at TEXT,
+		hostname TEXT UNIQUE,
+		namespace TEXT,
+		fly_app TEXT,
+		address TEXT,
+		primary_address TEXT,
+		cloud_cluster_name TEXT,
+		local BOOLEAN,
+		allowed_ips TEXT
+	)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+}
+
+// func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
+// 	db := openMem(t)
+// 	createDatabasesTable(t, db)
+//
+// 	const stmtText = `
+// 	INSERT INTO databases
+// 		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips,id)
+// 	VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+// 	ON CONFLICT (hostname) DO UPDATE SET
+// 		updated_at=excluded.updated_at,
+// 		deleted_at=excluded.deleted_at,
+// 		hostname=excluded.hostname,
+// 		namespace=excluded.namespace,
+// 		fly_app=excluded.fly_app,
+// 		address=excluded.address,
+// 		primary_address=excluded.primary_address,
+// 		cloud_cluster_name=excluded.cloud_cluster_name,
+// 		local=excluded.local,
+// 		allowed_ips=excluded.allowed_ips
+// 	RETURNING id`
+//
+// 	now := time.Now()
+// 	args := []any{
+// 		now,                      // created_at (driver will send RFC3339 string)
+// 		now,                      // updated_at
+// 		nil,                      // deleted_at
+// 		"host-1.local",           // hostname (unique)
+// 		"ns-123",                 // namespace
+// 		"app-xyz",                // fly_app
+// 		"http://127.0.0.1:10000", // address
+// 		"",                       // primary_address
+// 		"local",                  // cloud_cluster_name
+// 		false,                    // local (bool -> int 0/1 in your marshaler)
+// 		nil,                      // allowed_ips (NULL)
+// 		11,                       // id (explicit)
+// 	}
+//
+// 	stmt, err := db.Prepare(stmtText)
+// 	if err != nil {
+// 		t.Fatalf("prepare: %v", err)
+// 	}
+// 	defer stmt.Close()
+//
+// 	var returnedID int64
+// 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
+// 		t.Fatalf("queryrow/scan: %v", err)
+// 	}
+// 	if returnedID != 11 {
+// 		t.Fatalf("expected id=11, got %d", returnedID)
+// 	}
+//
+// 	// Re-run to trigger ON CONFLICT path and ensure still binds 12 args and returns id
+// 	args[1] = time.Now() // updated_at
+// 	if err := stmt.QueryRow(args...).Scan(&returnedID); err != nil {
+// 		t.Fatalf("queryrow/scan (conflict): %v", err)
+// 	}
+// 	if returnedID != 11 {
+// 		t.Fatalf("expected id=11 on conflict, got %d", returnedID)
+// 	}
+// }
+
+func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
+	db := openMem(t)
+	createDatabasesTable(t, db)
+
+	const stmtText = `
+	INSERT INTO databases
+		(created_at,updated_at,deleted_at,hostname,namespace,fly_app,address,primary_address,cloud_cluster_name,local,allowed_ips,id)
+	VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+	ON CONFLICT (hostname) DO UPDATE SET
+		updated_at=excluded.updated_at,
+		deleted_at=excluded.deleted_at,
+		hostname=excluded.hostname,
+		namespace=excluded.namespace,
+		fly_app=excluded.fly_app,
+		address=excluded.address,
+		primary_address=excluded.primary_address,
+		cloud_cluster_name=excluded.cloud_cluster_name,
+		local=excluded.local,
+		allowed_ips=excluded.allowed_ips
+	RETURNING id`
+
+	stmt, err := db.Prepare(stmtText)
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	args := []any{
+		now, now, nil, "host-2.local", "ns", "app", "addr", "", "local", false, nil, 22,
+	}
+	// Append a bogus 13th arg to force the exact database/sql error you saw
+	args = append(args, 999)
+
+	var id int64
+	if err := stmt.QueryRow(args...).Scan(&id); err == nil {
+		t.Fatal("expected argument count error, got nil")
 	}
 }
