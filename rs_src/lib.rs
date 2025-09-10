@@ -21,7 +21,7 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
     }
     let path = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = path.to_str().unwrap();
-    let Ok((io, conn)) = Connection::from_uri(path, true, false, false) else {
+    let Ok((io, conn)) = Connection::from_uri(path, true, false, false, false) else {
         panic!("Failed to open connection with path: {path}");
     };
     TursoConn::new(conn, io).to_ptr()

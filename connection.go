@@ -149,6 +149,15 @@ func (r tursoResult) RowsAffected() (int64, error) {
 	return r.rows, nil
 }
 
+func (c *tursoConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		return c.Prepare(query)
+	}
+}
+
 func (c *tursoConn) Prepare(query string) (driver.Stmt, error) {
 	if c.ctx == 0 {
 		return nil, errors.New("connection closed")

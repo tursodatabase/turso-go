@@ -145,7 +145,7 @@ type Blob struct {
 }
 
 // convert a tursoValue to a native Go value
-func toGoValue(valPtr uintptr) interface{} {
+func toGoValue(valPtr uintptr) any {
 	if valPtr == 0 {
 		return nil
 	}
@@ -269,6 +269,9 @@ func buildArgs(args []driver.Value) ([]tursoValue, func(), error) {
 			cstr := CString(timeStr)
 			pinner.Pin(cstr)
 			*(*uintptr)(unsafe.Pointer(&tursoVal.Value)) = uintptr(unsafe.Pointer(cstr))
+		case time.Duration:
+			tursoVal.Type = intVal
+			tursoVal.Value = *(*[8]byte)(unsafe.Pointer(&val))
 		default:
 			return nil, pinner.Unpin, fmt.Errorf("unsupported type: %T", v)
 		}
