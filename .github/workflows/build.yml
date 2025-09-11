@@ -18,14 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          [
-            ubuntu-latest,
-            ubuntu-24.04-arm,
-            ubuntu macos-14,
-            macos-13,
-            windows-latest,
-            windows-11-arm,
-          ]
+          [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-13, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
