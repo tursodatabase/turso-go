@@ -17,6 +17,9 @@ jobs:
           - name: linux_amd64
             os: ubuntu-latest
             lib_relpath: libs/linux_amd64/libturso_go.so
+          - name: linux_arm64
+            os: ubuntu-24.04-arm
+            lib_relpath: libs/linux_arm64/libturso_go.so
           - name: macos_amd64
             os: macos-13
             lib_relpath: libs/darwin_amd64/libturso_go.dylib
