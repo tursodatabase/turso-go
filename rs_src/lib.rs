@@ -4,10 +4,13 @@ mod statement;
 mod types;
 use std::{
     ffi::{c_char, c_void},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 extern crate turso_core;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use turso_core::{Connection, LimboError};
+
+static TRACING_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 /// # Safety
 /// Safe to be called from Go with null terminated DSN string.
@@ -21,10 +24,39 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
     }
     let path = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = path.to_str().unwrap();
+    let _ = init_tracing();
     let Ok((io, conn)) = Connection::from_uri(path, true, false, false, false) else {
         panic!("Failed to open connection with path: {path}");
     };
     TursoConn::new(conn, io).to_ptr()
+}
+
+pub fn init_tracing() -> Result<(), std::io::Error> {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let Ok(file) = std::env::var("TURSO_LOG_FILE") else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "TURSO_LOG_FILE not set",
+        ));
+    };
+    let (non_blocking, guard) = tracing_appender::non_blocking(
+        std::fs::File::options()
+            .append(true)
+            .create(true)
+            .open(file)?,
+    );
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_line_number(true)
+                .with_thread_ids(true)
+                .with_ansi(false),
+        )
+        .try_init();
+    TRACING_GUARD.set(guard).ok();
+    Ok(())
 }
 
 #[allow(dead_code)]
