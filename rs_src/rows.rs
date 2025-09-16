@@ -50,6 +50,7 @@ impl<'conn> TursoRows<'conn> {
 #[unsafe(no_mangle)]
 pub extern "C" fn rows_next(ctx: *mut c_void) -> ResultCode {
     if ctx.is_null() {
+        tracing::error!("rows_next: context is null");
         return ResultCode::Error;
     }
     let ctx = TursoRows::from_ptr(ctx);
@@ -84,6 +85,7 @@ pub extern "C" fn rows_get_value(ctx: *mut c_void, col_idx: usize) -> *const c_v
     }
     let ctx = TursoRows::from_ptr(ctx);
 
+    #[allow(clippy::collapsible_if)]
     if let Ok(stmt) = ctx.stmt.lock() {
         if let Some(row) = stmt.row() {
             if let Ok(value) = row.get::<&Value>(col_idx) {
@@ -107,6 +109,7 @@ pub extern "C" fn free_string(s: *mut c_char) {
 #[unsafe(no_mangle)]
 pub extern "C" fn rows_get_columns(rows_ptr: *mut c_void) -> i32 {
     if rows_ptr.is_null() {
+        tracing::error!("rows_get_columns: Null pointer");
         return -1;
     }
     let rows = TursoRows::from_ptr(rows_ptr);
@@ -123,6 +126,7 @@ pub extern "C" fn rows_get_columns(rows_ptr: *mut c_void) -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn rows_get_column_name(rows_ptr: *mut c_void, idx: i32) -> *const c_char {
     if rows_ptr.is_null() {
+        tracing::error!("rows_get_column_name: Null pointer");
         return std::ptr::null_mut();
     }
     let rows = TursoRows::from_ptr(rows_ptr);
@@ -134,6 +138,7 @@ pub extern "C" fn rows_get_column_name(rows_ptr: *mut c_void, idx: i32) -> *cons
         let cstr = std::ffi::CString::new(name.as_bytes()).expect("Failed to create CString");
         cstr.into_raw() as *const c_char
     } else {
+        tracing::error!("rows_get_column_name: Failed to lock statement");
         std::ptr::null_mut()
     }
 }
@@ -141,6 +146,7 @@ pub extern "C" fn rows_get_column_name(rows_ptr: *mut c_void, idx: i32) -> *cons
 #[unsafe(no_mangle)]
 pub extern "C" fn rows_get_error(ctx: *mut c_void) -> *const c_char {
     if ctx.is_null() {
+        tracing::error!("rows_get_error: context is null");
         return std::ptr::null();
     }
     let ctx = TursoRows::from_ptr(ctx);

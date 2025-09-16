@@ -178,17 +178,6 @@ func toGoValue(valPtr uintptr) any {
 	}
 }
 
-func getArgsPtr(args []driver.Value) (uintptr, func(), error) {
-	if len(args) == 0 {
-		return 0, nil, nil
-	}
-	argSlice, allocs, err := buildArgs(args)
-	if err != nil {
-		return 0, allocs, err
-	}
-	return uintptr(unsafe.Pointer(&argSlice[0])), allocs, nil
-}
-
 // convert a byte slice to a Blob type that can be sent over FFI
 func makeBlob(b []byte) *Blob {
 	if len(b) == 0 {

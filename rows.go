@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -33,6 +34,34 @@ func (r *tursoRows) isClosed() bool {
 	return false
 }
 
+func dequoteIdent(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		switch s[0] {
+		case '`':
+			if s[len(s)-1] == '`' {
+				s = s[1 : len(s)-1]
+				s = strings.ReplaceAll(s, "``", "`")
+			}
+		case '"':
+			if s[len(s)-1] == '"' {
+				s = s[1 : len(s)-1]
+				s = strings.ReplaceAll(s, `""`, `"`)
+			}
+		case '[':
+			if s[len(s)-1] == ']' {
+				s = s[1 : len(s)-1]
+			}
+		}
+	}
+	return s
+}
+
+func baseName(s string) string {
+	parts := strings.Split(s, ".")
+	return parts[len(parts)-1]
+}
+
 func (r *tursoRows) Columns() []string {
 	if r.isClosed() {
 		return nil
@@ -41,14 +70,18 @@ func (r *tursoRows) Columns() []string {
 		r.mu.Lock()
 		count := rowsGetColumns(r.ctx)
 		if count > 0 {
-			columns := make([]string, 0, count)
+			cols := make([]string, 0, count)
 			for i := 0; i < int(count); i++ {
 				cstr := rowsGetColumnName(r.ctx, int32(i))
-				columns = append(columns, fmt.Sprintf("%s", GoString(cstr)))
+				raw := fmt.Sprintf("%s", GoString(cstr))
 				freeCString(cstr)
+				name := dequoteIdent(baseName(raw))
+				cols = append(cols, name)
 			}
 			r.mu.Unlock()
-			r.columns = columns
+			r.columns = cols
+		} else {
+			r.mu.Unlock()
 		}
 	}
 	return r.columns

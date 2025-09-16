@@ -9,6 +9,7 @@ use turso_core::{LimboError, Statement, StepResult};
 #[unsafe(no_mangle)]
 pub extern "C" fn db_prepare(ctx: *mut c_void, query: *const c_char) -> *mut c_void {
     if ctx.is_null() || query.is_null() {
+        tracing::error!("db_prepare: context or query is null");
         return std::ptr::null_mut();
     }
     let query_str = unsafe { std::ffi::CStr::from_ptr(query) }.to_str().unwrap();
@@ -17,8 +18,16 @@ pub extern "C" fn db_prepare(ctx: *mut c_void, query: *const c_char) -> *mut c_v
     let stmt = db.conn.prepare(query_str);
     match stmt {
         #[allow(clippy::arc_with_non_send_sync)]
-        Ok(stmt) => TursoStatement::new(Arc::new(Mutex::new(stmt)), db).to_ptr(),
+        Ok(stmt) => {
+            tracing::trace!(
+                "Prepared statement with {} parameters",
+                stmt.parameters_count()
+            );
+            let res = TursoStatement::new(Arc::new(Mutex::new(stmt)), db);
+            res.to_ptr()
+        }
         Err(err) => {
+            tracing::error!("Error preparing statement: {:?}", err);
             db.err = Some(err);
             std::ptr::null_mut()
         }
@@ -37,6 +46,7 @@ pub extern "C" fn stmt_execute(
     }
     let stmt = TursoStatement::from_ptr(ctx);
 
+    tracing::trace!("Executing statement with {arg_count} parameters");
     let args = if !args_ptr.is_null() && arg_count > 0 {
         unsafe { std::slice::from_raw_parts(args_ptr, arg_count as usize) }
     } else {
@@ -44,6 +54,7 @@ pub extern "C" fn stmt_execute(
     };
     let mut pool = AllocPool::new();
     let Ok(mut statement) = stmt.statement.lock() else {
+        tracing::error!("stmt_execute: Statement is closed");
         return ResultCode::Error;
     };
     for (i, arg) in args.iter().enumerate() {
@@ -71,16 +82,20 @@ pub extern "C" fn stmt_execute(
             Ok(StepResult::IO) => {
                 let res = statement.run_once();
                 if res.is_err() {
+                    tracing::error!("IO error during statement execution: {:?}", res);
                     return ResultCode::Error;
                 }
             }
             Ok(StepResult::Busy) => {
+                tracing::error!("Busy error during statement execution");
                 return ResultCode::Busy;
             }
             Ok(StepResult::Interrupt) => {
+                tracing::error!("interrupted statement execution");
                 return ResultCode::Interrupt;
             }
             Err(err) => {
+                tracing::error!("Error during statement execution: {:?}", err);
                 stmt.conn.err = Some(err);
                 return ResultCode::Error;
             }
@@ -95,9 +110,11 @@ pub extern "C" fn stmt_parameter_count(ctx: *mut c_void) -> i32 {
     }
     let stmt = TursoStatement::from_ptr(ctx);
     let Ok(statement) = stmt.statement.lock() else {
+        tracing::error!("stmt_parameter_count: Statement is closed");
         stmt.err = Some(LimboError::InternalError("Statement is closed".to_string()));
         return -1;
     };
+    tracing::debug!("Statement has {} parameters", statement.parameters_count());
     statement.parameters_count() as i32
 }
 
@@ -122,9 +139,9 @@ pub extern "C" fn stmt_query(
             let val = arg.to_value(&mut pool);
             statement.bind_at(NonZero::new(i + 1).unwrap(), val);
         }
-        #[allow(clippy::arc_with_non_send_sync)]
         TursoRows::new(stmt.statement.clone(), stmt.conn).to_ptr()
     } else {
+        tracing::error!("stmt_query: Statement is locked");
         std::ptr::null_mut()
     }
 }
@@ -148,6 +165,7 @@ pub extern "C" fn stmt_close(ctx: *mut c_void) -> ResultCode {
 #[unsafe(no_mangle)]
 pub extern "C" fn stmt_get_error(ctx: *mut c_void) -> *const c_char {
     if ctx.is_null() {
+        tracing::error!("stmt_get_error: context is null");
         return std::ptr::null();
     }
     let stmt = TursoStatement::from_ptr(ctx);
@@ -195,6 +213,7 @@ impl<'conn> TursoStatement<'conn> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn stmt_last_insert_id(ctx: *mut c_void, val: *mut i64) -> ResultCode {
     if ctx.is_null() {
+        tracing::error!("stmt_last_insert_id: context is null");
         return ResultCode::Invalid;
     }
     let stmt = TursoStatement::from_ptr(ctx);
@@ -215,6 +234,7 @@ pub unsafe extern "C" fn stmt_last_insert_id(ctx: *mut c_void, val: *mut i64) ->
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn stmt_changes(ctx: *mut c_void, val: *mut i64) -> ResultCode {
     if ctx.is_null() {
+        tracing::error!("stmt_changes: context is null");
         return ResultCode::Invalid;
     }
     let stmt = TursoStatement::from_ptr(ctx);
