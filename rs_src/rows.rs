@@ -85,11 +85,13 @@ pub extern "C" fn rows_get_value(ctx: *mut c_void, col_idx: usize) -> *const c_v
     }
     let ctx = TursoRows::from_ptr(ctx);
 
-    if let Ok(stmt) = ctx.stmt.lock()
-        && let Some(row) = stmt.row()
-        && let Ok(value) = row.get::<&Value>(col_idx)
-    {
-        return TursoValue::from_db_value(value).to_ptr();
+    #[allow(clippy::collapsible_if)]
+    if let Ok(stmt) = ctx.stmt.lock() {
+        if let Some(row) = stmt.row() {
+            if let Ok(value) = row.get::<&Value>(col_idx) {
+                return TursoValue::from_db_value(value).to_ptr();
+            }
+        }
     }
     std::ptr::null()
 }
