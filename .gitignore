@@ -1,2 +1,5 @@
 /target
 /_libs_artifacts
+*.db
+*.db-wal
+output.log
