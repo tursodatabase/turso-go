@@ -81,7 +81,10 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	case Invalid:
 		return nil, errors.New("invalid statement")
 	default:
-		return nil, ls.getError()
+		if e := ls.getError(); e != nil {
+			return nil, e
+		}
+		return nil, fmt.Errorf("execute failed: %s", ResultCode(res).String())
 	}
 }
 
@@ -99,7 +102,10 @@ func (ls *tursoStmt) Query(args []driver.Value) (driver.Rows, error) {
 	defer ls.mu.Unlock()
 	rowsPtr := stmtQuery(ls.ctx, argPtr, uint64(len(queryArgs)))
 	if rowsPtr == 0 {
-		return nil, ls.getError()
+		if e := ls.getError(); e != nil {
+			return nil, e
+		}
+		return nil, fmt.Errorf("query failed: no row handle")
 	}
 	return newRows(rowsPtr), nil
 }
