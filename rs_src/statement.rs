@@ -35,6 +35,20 @@ pub extern "C" fn db_prepare(ctx: *mut c_void, query: *const c_char) -> *mut c_v
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn stmt_reset(ctx: *mut c_void) -> ResultCode {
+    if ctx.is_null() {
+        return ResultCode::Invalid;
+    }
+    let stmt = TursoStatement::from_ptr(ctx);
+    let Ok(mut statement) = stmt.statement.lock() else {
+        tracing::error!("stmt_reset: Statement is closed");
+        return ResultCode::Error;
+    };
+    statement.reset();
+    ResultCode::Ok
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn stmt_execute(
     ctx: *mut c_void,
     args_ptr: *mut TursoValue,

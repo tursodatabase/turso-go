@@ -63,6 +63,10 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	var changes int64
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
+	ok := stmtReset(ls.ctx)
+	if ResultCode(ok) != Ok {
+		return nil, fmt.Errorf("error resetting statement: %s", ResultCode(ok).String())
+	}
 	res := stmtExec(ls.ctx, argPtr, int32(len(argArray)), uintptr(unsafe.Pointer(&changes)))
 	switch ResultCode(res) {
 	case Ok, Done:
