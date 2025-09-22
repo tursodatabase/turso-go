@@ -203,6 +203,42 @@ func TestGormUpsertWithReturning(t *testing.T) {
 	})
 }
 
+func TestGormSoftDelete(t *testing.T) {
+	db := openGormDB(t)
+	err := db.AutoMigrate(&Database{})
+	if err != nil {
+		t.Fatalf("automigrate failed: %v", err)
+	}
+	testData := []Database{
+		{Hostname: "soft1.local", Namespace: "ns1"},
+		{Hostname: "soft2.local", Namespace: "ns2"},
+		{Hostname: "soft3.local", Namespace: "ns3"},
+	}
+	err = db.Create(&testData).Error
+	if err != nil {
+		t.Fatalf("create test data failed: %v", err)
+	}
+	// delete a row
+	err = db.Where("hostname = ?", "soft2.local").Delete(&Database{}).Error
+	if err != nil {
+		t.Fatalf("soft delete failed: %v", err)
+	}
+	// select non-deleted rows
+	var rows []Database
+	err = db.Find(&rows).Error
+	if err != nil {
+		t.Fatalf("find non-deleted failed: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 non-deleted rows, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.Hostname == "soft2.local" {
+			t.Fatalf("soft-deleted record still found in normal query")
+		}
+	}
+}
+
 func TestGormComplexQueries(t *testing.T) {
 	db := openGormDB(t)
 	err := db.AutoMigrate(&Database{})
@@ -355,4 +391,95 @@ func TestGormLastMethod(t *testing.T) {
 	if database.Hostname != "last-test-2.local" {
 		t.Fatalf("unexpected hostname from Last(): %s", database.Hostname)
 	}
+}
+
+func TestGormPartialIndexes(t *testing.T) {
+	db := openGormDB(t)
+
+	sqlDB, _ := db.DB()
+
+	_, err := sqlDB.Exec(`
+		CREATE TABLE partial_index_test (
+			id INTEGER PRIMARY KEY,
+			status TEXT,
+			priority INTEGER,
+			deleted_at TIMESTAMP,
+			email TEXT,
+			active BOOLEAN
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Test creating partial indexes
+	t.Run("CreatePartialIndexes", func(t *testing.T) {
+		_, err := sqlDB.Exec(`
+			CREATE UNIQUE INDEX idx_active_email 
+			ON partial_index_test(email) 
+			WHERE active = 1
+		`)
+		if err != nil {
+			t.Fatalf("failed to create partial unique index: %v", err)
+		}
+
+		_, err = sqlDB.Exec(`
+			CREATE INDEX idx_high_priority 
+			ON partial_index_test(priority, status) 
+			WHERE priority > 5 AND status != 'archived'
+		`)
+		if err != nil {
+			t.Fatalf("failed to create partial index with complex WHERE: %v", err)
+		}
+
+		_, err = sqlDB.Exec(`
+			CREATE INDEX idx_not_deleted 
+			ON partial_index_test(status) 
+			WHERE deleted_at IS NULL
+		`)
+		if err != nil {
+			t.Fatalf("failed to create partial index with IS NULL: %v", err)
+		}
+	})
+
+	t.Run("PartialUniqueConstraint", func(t *testing.T) {
+		// Insert active user with email
+		_, err := sqlDB.Exec(`
+			INSERT INTO partial_index_test (email, active, status, priority) 
+			VALUES (?, ?, ?, ?)
+		`, "user@example.com", true, "active", 3)
+		if err != nil {
+			t.Fatalf("failed to insert first active user: %v", err)
+		}
+
+		// Should succeed - same email but inactive user
+		_, err = sqlDB.Exec(`
+			INSERT INTO partial_index_test (email, active, status, priority) 
+			VALUES (?, ?, ?, ?)
+		`, "user@example.com", false, "inactive", 2)
+		if err != nil {
+			t.Fatalf("failed to insert inactive user with same email: %v", err)
+		}
+
+		// Should fail - duplicate email for active user
+		_, err = sqlDB.Exec(`
+			INSERT INTO partial_index_test (email, active, status, priority) 
+			VALUES (?, ?, ?, ?)
+		`, "user@example.com", true, "active", 5)
+		if err == nil {
+			t.Fatal("expected unique constraint violation for duplicate active email")
+		}
+	})
+
+	t.Run("ComplexWhereClause", func(t *testing.T) {
+		_, err := sqlDB.Exec(`
+			CREATE INDEX IF NOT EXISTS idx_complex 
+			ON partial_index_test(id) 
+			WHERE (priority BETWEEN 3 AND 7) AND status IN ('active', 'pending')
+		`)
+		if err != nil {
+			t.Fatalf("failed to create complex partial index: %v", err)
+		}
+
+	})
 }
