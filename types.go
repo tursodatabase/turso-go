@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 	"unsafe"
 )
@@ -90,6 +91,31 @@ const (
 	FfiFreeBlob           = "free_blob"
 )
 
+var timeLayouts = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02",
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04:05Z07:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999Z07:00",
+}
+
+func parseTimeString(str string) (time.Time, bool) {
+	if t, err := time.Parse(time.RFC3339Nano, str); err == nil {
+		return t, true
+	}
+	for _, layout := range timeLayouts[1:] {
+		if t, err := time.Parse(layout, str); err == nil {
+			if !strings.Contains(layout, "Z07:00") && !strings.Contains(layout, "T") {
+				return t.In(time.UTC), true
+			}
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 // convert a namedValue slice into normal values until named parameters are supported
 func namedValueToValue(named []driver.NamedValue) []driver.Value {
 	out := make([]driver.Value, len(named))
@@ -160,9 +186,10 @@ func toGoValue(valPtr uintptr) any {
 		defer freeCString(textPtr)
 		str := GoString(textPtr)
 
-		// Try to parse as RFC3339 time format
-		if t, err := time.Parse(time.RFC3339, str); err == nil {
-			return t
+		if strings.Contains(str, "T") || (strings.Contains(str, " ") && strings.Contains(str, ":")) {
+			if t, ok := parseTimeString(str); ok {
+				return t
+			}
 		}
 
 		// If it doesn't parse as time, return as string
