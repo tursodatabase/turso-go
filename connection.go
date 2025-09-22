@@ -33,6 +33,7 @@ var (
 	connPrepare       func(uintptr, string) uintptr
 	connGetError      func(uintptr) uintptr
 	stmtChanges       func(uintptr, uintptr) int32
+	stmtReset         func(uintptr) int32
 	freeBlobFunc      func(uintptr)
 	freeStringFunc    func(uintptr)
 	rowsGetColumns    func(uintptr) int32
@@ -62,6 +63,7 @@ func ensureLibLoaded() error {
 		purego.RegisterLibFunc(&freeBlobFunc, tursoLib, FfiFreeBlob)
 		purego.RegisterLibFunc(&stmtLastInsertId, tursoLib, FfiConnLastInsertId)
 		purego.RegisterLibFunc(&stmtChanges, tursoLib, FfiConnChanges)
+		purego.RegisterLibFunc(&stmtReset, tursoLib, FfiStmtReset)
 		purego.RegisterLibFunc(&freeStringFunc, tursoLib, FfiFreeCString)
 		purego.RegisterLibFunc(&rowsGetColumns, tursoLib, FfiRowsGetColumns)
 		purego.RegisterLibFunc(&rowsGetColumnName, tursoLib, FfiRowsGetColumnName)

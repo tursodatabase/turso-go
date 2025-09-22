@@ -77,6 +77,7 @@ const (
 	FfiConnChanges        = "stmt_changes"
 	FfiStmtExec           = "stmt_execute"
 	FfiStmtQuery          = "stmt_query"
+	FfiStmtReset          = "stmt_reset"
 	FfiStmtParameterCount = "stmt_parameter_count"
 	FfiStmtGetError       = "stmt_get_error"
 	FfiStmtClose          = "stmt_close"
