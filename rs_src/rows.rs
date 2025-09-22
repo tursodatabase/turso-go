@@ -6,18 +6,29 @@ use std::{
     ffi::{c_char, c_void},
     sync::{Arc, Mutex},
 };
-use turso_core::{LimboError, Statement, StepResult, Value};
+use turso_core::{LimboError, Statement, StepResult};
 
 pub struct TursoRows<'conn> {
     stmt: Arc<Mutex<Statement>>,
+    state: RowsState,
     _conn: &'conn mut TursoConn,
     err: Option<LimboError>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[repr(C)]
+enum RowsState {
+    Init,
+    AtRow,
+    Done,
+    Error,
 }
 
 impl<'conn> TursoRows<'conn> {
     pub fn new(stmt: Arc<Mutex<Statement>>, conn: &'conn mut TursoConn) -> Self {
         TursoRows {
             stmt,
+            state: RowsState::Init,
             _conn: conn,
             err: None,
         }
@@ -37,7 +48,7 @@ impl<'conn> TursoRows<'conn> {
 
     fn get_error(&mut self) -> *const c_char {
         if let Some(err) = &self.err {
-            let err = format!("{err}");
+            let err = err.to_string();
             let c_str = std::ffi::CString::new(err).unwrap();
             self.err = None;
             c_str.into_raw() as *const c_char
@@ -50,27 +61,30 @@ impl<'conn> TursoRows<'conn> {
 #[unsafe(no_mangle)]
 pub extern "C" fn rows_next(ctx: *mut c_void) -> ResultCode {
     if ctx.is_null() {
-        tracing::error!("rows_next: context is null");
         return ResultCode::Error;
     }
     let ctx = TursoRows::from_ptr(ctx);
     if let Ok(mut stmt) = ctx.stmt.lock() {
         match stmt.step() {
-            Ok(StepResult::Row) => ResultCode::Row,
-            Ok(StepResult::Done) => ResultCode::Done,
-            Ok(StepResult::IO) => {
-                let res = stmt.run_once();
-                if res.is_err() {
-                    ResultCode::Error
-                } else {
-                    ResultCode::Io
-                }
+            Ok(StepResult::Row) => {
+                ctx.state = RowsState::AtRow;
+                ResultCode::Row
             }
+            Ok(StepResult::Done) => {
+                ctx.state = RowsState::Done;
+                ResultCode::Done
+            }
+            Ok(StepResult::IO) => ResultCode::Io,
             Ok(StepResult::Busy) => ResultCode::Busy,
             Ok(StepResult::Interrupt) => ResultCode::Interrupt,
             Err(err) => {
+                let code = match err {
+                    LimboError::Constraint(..) => ResultCode::ConstraintViolation,
+                    _ => ResultCode::Error,
+                };
                 ctx.err = Some(err);
-                ResultCode::Error
+                ctx.state = RowsState::Error;
+                code
             }
         }
     } else {
@@ -84,13 +98,15 @@ pub extern "C" fn rows_get_value(ctx: *mut c_void, col_idx: usize) -> *const c_v
         return std::ptr::null();
     }
     let ctx = TursoRows::from_ptr(ctx);
+    if ctx.state != RowsState::AtRow {
+        return std::ptr::null();
+    }
 
     #[allow(clippy::collapsible_if)]
     if let Ok(stmt) = ctx.stmt.lock() {
         if let Some(row) = stmt.row() {
-            if let Ok(value) = row.get::<&Value>(col_idx) {
-                return TursoValue::from_db_value(value).to_ptr();
-            }
+            let res = row.get_value(col_idx);
+            return TursoValue::from_db_value(res).to_ptr();
         }
     }
     std::ptr::null()
@@ -160,6 +176,7 @@ pub extern "C" fn rows_close(ctx: *mut c_void) {
         if let Ok(mut stmt) = rows.stmt.lock() {
             stmt.reset();
             rows.err = None;
+            rows.state = RowsState::Init;
         }
     }
     unsafe {
