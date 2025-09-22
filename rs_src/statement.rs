@@ -106,6 +106,7 @@ pub extern "C" fn stmt_execute(
 #[unsafe(no_mangle)]
 pub extern "C" fn stmt_parameter_count(ctx: *mut c_void) -> i32 {
     if ctx.is_null() {
+        tracing::error!("stmt_parameter_count: context is null");
         return -1;
     }
     let stmt = TursoStatement::from_ptr(ctx);
@@ -155,8 +156,7 @@ pub struct TursoStatement<'conn> {
 #[unsafe(no_mangle)]
 pub extern "C" fn stmt_close(ctx: *mut c_void) -> ResultCode {
     if !ctx.is_null() {
-        let stmt = unsafe { Box::from_raw(ctx as *mut TursoStatement) };
-        drop(stmt);
+        let _ = unsafe { Box::from_raw(ctx as *mut TursoStatement) };
         return ResultCode::Ok;
     }
     ResultCode::Invalid

@@ -28,10 +28,7 @@ func newRows(ctx uintptr) *tursoRows {
 }
 
 func (r *tursoRows) isClosed() bool {
-	if r.ctx == 0 || r.closed {
-		return true
-	}
-	return false
+	return r.ctx == 0 || r.closed
 }
 
 func dequoteIdent(s string) string {
@@ -66,31 +63,29 @@ func (r *tursoRows) Columns() []string {
 	if r.isClosed() {
 		return nil
 	}
-	if r.columns == nil {
-		r.mu.Lock()
-		count := rowsGetColumns(r.ctx)
-		if count > 0 {
-			cols := make([]string, 0, count)
-			for i := 0; i < int(count); i++ {
-				cstr := rowsGetColumnName(r.ctx, int32(i))
-				raw := fmt.Sprintf("%s", GoString(cstr))
-				freeCString(cstr)
-				name := dequoteIdent(baseName(raw))
-				cols = append(cols, name)
-			}
-			r.mu.Unlock()
-			r.columns = cols
-		} else {
-			r.mu.Unlock()
-		}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.columns != nil {
+		return r.columns
 	}
+	count := rowsGetColumns(r.ctx)
+	if count <= 0 {
+		return nil
+	}
+	cols := make([]string, 0, count)
+	for i := 0; i < int(count); i++ {
+		cstr := rowsGetColumnName(r.ctx, int32(i))
+		raw := GoString(cstr)
+		freeCString(cstr)
+		cols = append(cols, dequoteIdent(baseName(raw)))
+	}
+	r.columns = cols
 	return r.columns
 }
 
 func (r *tursoRows) Close() error {
-	r.err = errors.New(RowsClosedErr)
 	if r.isClosed() {
-		return r.err
+		return nil
 	}
 	r.mu.Lock()
 	r.closed = true
@@ -113,27 +108,54 @@ func (r *tursoRows) Next(dest []driver.Value) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.isClosed() {
-		return r.err
+		if r.err != nil {
+			return r.err
+		}
+		return io.EOF
 	}
 	for {
-		status := rowsNext(r.ctx)
-		switch ResultCode(status) {
+		rc := ResultCode(rowsNext(r.ctx))
+		switch rc {
 		case Row:
-			for i := range dest {
-				valPtr := rowsGetValue(r.ctx, int32(i))
-				val := toGoValue(valPtr)
-				if val == nil {
-					r.getError()
+			ncol := int(rowsGetColumns(r.ctx))
+			if ncol < 0 {
+				if e := r.getError(); e != nil {
+					r.err = e
+				} else {
+					r.err = errors.New("rows: negative column count")
 				}
-				dest[i] = val
+				return r.err
+			}
+			if len(dest) > ncol {
+				dest = dest[:ncol]
+			}
+			for i := 0; i < len(dest); i++ {
+				vp := rowsGetValue(r.ctx, int32(i))
+				if vp == 0 {
+					if e := r.getError(); e != nil {
+						r.err = e
+					} else {
+						r.err = fmt.Errorf("rows: missing value at column %d", i)
+					}
+					return r.err
+				}
+				dest[i] = toGoValue(vp)
 			}
 			return nil
+		case ConstraintViolation:
+			r.err = errors.New("constraint violation")
+			return r.err
 		case Io:
 			continue
 		case Done:
 			return io.EOF
 		default:
-			return r.getError()
+			if e := r.getError(); e != nil {
+				r.err = e
+			} else {
+				r.err = fmt.Errorf("query failed: %s", rc.String())
+			}
+			return r.err
 		}
 	}
 }
