@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 extern crate turso_core;
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use turso_core::{Connection, LimboError};
 
 static TRACING_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
@@ -25,7 +25,13 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
     let path = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = path.to_str().unwrap();
     let _ = init_tracing();
-    let Ok((io, conn)) = Connection::from_uri(path, true, false, false, false) else {
+    let indexes = true;
+    let mvcc = false;
+    let encryption = false;
+    let views = false;
+    let strict = false;
+    let Ok((io, conn)) = Connection::from_uri(path, indexes, mvcc, views, strict, encryption)
+    else {
         panic!("Failed to open connection with path: {path}");
     };
     TursoConn::new(conn, io).to_ptr()
