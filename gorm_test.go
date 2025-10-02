@@ -45,6 +45,20 @@ func openGormDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestReturningColumnName(t *testing.T) {
+	db := openGormDB(t)
+	sqlDB, _ := db.DB()
+	sqlDB.Exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
+	rows, _ := sqlDB.Query("INSERT INTO test (name) VALUES ('test') RETURNING id")
+	defer rows.Close()
+
+	cols, _ := rows.Columns()
+	t.Logf("Column names: %v", cols) // Should print ["id"] not ["rowid"]
+	if cols[0] != "id" {
+		t.Fatalf("expected column name 'id', got '%s'", cols[0])
+	}
+}
+
 func TestGormBasicOperations(t *testing.T) {
 	db := openGormDB(t)
 
