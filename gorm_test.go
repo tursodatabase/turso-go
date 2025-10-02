@@ -13,11 +13,8 @@ import (
 )
 
 type Database struct {
-	ID               uint `gorm:"primaryKey"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
-	Hostname         string         `gorm:"unique;not null"`
+	gorm.Model
+	Hostname         string `gorm:"unique;not null"`
 	Namespace        string
 	Address          string
 	PrimaryAddress   string
@@ -247,12 +244,15 @@ func TestGormComplexQueries(t *testing.T) {
 	}
 
 	testData := []Database{
-		{Hostname: "host1.local", Namespace: "ns1", UpdatedAt: time.Now().Add(-2 * time.Hour)},
-		{Hostname: "host2.local", Namespace: "ns2", UpdatedAt: time.Now().Add(-1 * time.Hour)},
-		{Hostname: "host3.local", Namespace: "ns3", UpdatedAt: time.Now()},
+		{Hostname: "host1.local", Namespace: "ns1"},
+		{Hostname: "host2.local", Namespace: "ns2"},
+		{Hostname: "host3.local", Namespace: "ns3"},
 	}
 
+	hour := -2 * time.Hour
 	for _, d := range testData {
+		d.UpdatedAt = time.Now().Add(hour)
+		hour += time.Hour
 		db.Create(&d)
 	}
 	db.Where("hostname = ?", "host2.local").Delete(&Database{})
