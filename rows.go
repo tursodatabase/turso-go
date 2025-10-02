@@ -1,10 +1,12 @@
 package turso_go
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 )
@@ -24,6 +26,37 @@ func newRows(ctx uintptr) *tursoRows {
 		columns: nil,
 		err:     nil,
 		closed:  false,
+	}
+}
+
+func (r *tursoRows) ColumnTypeScanType(idx int) reflect.Type {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.isClosed() {
+		return reflect.TypeOf((*interface{})(nil)).Elem()
+	}
+
+	ptr := rowsGetColumnType(r.ctx, int32(idx))
+	if ptr == 0 {
+		return reflect.TypeOf((*interface{})(nil)).Elem()
+	}
+	colType := GoString(ptr)
+	freeCString(ptr)
+
+	switch colType {
+	case "INTEGER", "NUMERIC":
+		return reflect.TypeOf(sql.NullInt64{})
+	case "REAL", "FLOAT":
+		return reflect.TypeOf(sql.NullFloat64{})
+	case "TEXT":
+		return reflect.TypeOf(sql.NullString{})
+	case "BLOB":
+		return reflect.TypeOf([]byte{})
+	case "NULL":
+		return reflect.TypeOf(nil)
+	default:
+		return reflect.TypeOf((*interface{})(nil)).Elem()
 	}
 }
 
