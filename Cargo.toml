@@ -3,6 +3,7 @@ name = "turso-go"
 edition = "2024"
 authors = ["The Turso Authors"]
 license = "MIT"
+build = "rs_src/build.rs"
 
 [lib]
 name = "turso_go"

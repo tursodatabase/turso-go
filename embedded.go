@@ -37,6 +37,8 @@ import (
 //go:embed libs/*
 var embeddedLibs embed.FS
 
+//go:embed VERSION
+var embeddedVersion string
 var (
 	extractOnce   sync.Once
 	extractedPath string
@@ -90,16 +92,8 @@ func extractEmbeddedLibrary() (string, error) {
 				cacheRoot = os.TempDir()
 			}
 		}
-		destDir := filepath.Join(cacheRoot, "turso-go", platformDir)
+		destDir := filepath.Join(cacheRoot, "turso-go", embeddedVersion, platformDir)
 
-		if os.Getenv("TURSO_GO_NOCACHE") == "1" {
-			d, err := os.MkdirTemp("", "turso-go-*")
-			if err != nil {
-				extractErr = fmt.Errorf("mktemp: %w", err)
-				return
-			}
-			destDir = d
-		}
 		if err := os.MkdirAll(destDir, 0o755); err != nil {
 			extractErr = fmt.Errorf("mkdir %s: %w", destDir, err)
 			return
