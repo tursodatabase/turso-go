@@ -78,6 +78,7 @@ const (
 	FfiStmtExec           = "stmt_execute"
 	FfiStmtQuery          = "stmt_query"
 	FfiStmtReset          = "stmt_reset"
+	FfiRowsGetColumnType  = "rows_get_column_type"
 	FfiStmtParameterCount = "stmt_parameter_count"
 	FfiStmtGetError       = "stmt_get_error"
 	FfiStmtClose          = "stmt_close"
