@@ -1,6 +1,6 @@
 use crate::{
-    TursoConn,
     types::{ResultCode, TursoValue},
+    TursoConn,
 };
 use std::{
     ffi::{c_char, c_void},
@@ -110,6 +110,27 @@ pub extern "C" fn rows_get_value(ctx: *mut c_void, col_idx: usize) -> *const c_v
         }
     }
     std::ptr::null()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rows_get_column_type(ctx: *mut c_void, idx: i32) -> *const c_char {
+    if ctx.is_null() {
+        return std::ptr::null();
+    }
+    let rows = TursoRows::from_ptr(ctx);
+    let Ok(statement) = rows.stmt.lock() else {
+        tracing::error!("stmt_reset: Statement is closed");
+        return std::ptr::null();
+    };
+    if let Some(typ) = statement.get_column_type(idx as usize) {
+        std::ffi::CString::new(typ).unwrap().into_raw() as *const c_char
+    } else {
+        rows.err = Some(LimboError::InvalidArgument(format!(
+            "Column index {} out of bounds",
+            idx
+        )));
+        std::ptr::null()
+    }
 }
 
 #[unsafe(no_mangle)]
