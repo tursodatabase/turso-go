@@ -28,7 +28,7 @@ var (
 	tursoLib          uintptr
 	loadErr           error
 	dbOpen            func(string) uintptr
-	dbClose           func(uintptr) uintptr
+	dbClose           func(uintptr)
 	stmtLastInsertId  func(uintptr, uintptr) int32
 	connPrepare       func(uintptr, string) uintptr
 	connGetError      func(uintptr) uintptr
@@ -39,12 +39,12 @@ var (
 	freeStringFunc    func(uintptr)
 	rowsGetColumns    func(uintptr) int32
 	rowsGetColumnName func(uintptr, int32) uintptr
-	rowsGetValue      func(uintptr, int32) uintptr
+	rowsGetValue      func(uintptr, uint64) uintptr
 	rowsGetError      func(uintptr) uintptr
-	closeRows         func(uintptr) uintptr
-	rowsNext          func(uintptr) uintptr
+	closeRows         func(uintptr)
+	rowsNext          func(uintptr) int32
 	stmtQuery         func(stmtPtr uintptr, argsPtr uintptr, argCount uint64) uintptr
-	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount int32, changes uintptr) int32
+	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount uint64, changes uintptr) int32
 	stmtParamCount    func(uintptr) int32
 	stmtGetError      func(uintptr) uintptr
 	stmtClose         func(uintptr) int32
