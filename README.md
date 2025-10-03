@@ -3,7 +3,7 @@
   <h1 align="center">Turso Database Go Driver</h1>
 </p>
 
-**NOTE:** This driver, and `turso`, are currently in Alpha and are not yet in a usable, production ready state.
+> **⚠️Warning:** This software is in BETA. It may still contain bugs and unexpected behavior. Use caution with production data and ensure you have backups.
 
 This driver uses the awesome [purego](https://github.com/ebitengine/purego) library to call C (in this case Rust with C ABI) functions from Go without the use of `CGO`.
 
