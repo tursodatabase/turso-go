@@ -8,10 +8,10 @@ use std::{
 };
 use turso_core::{LimboError, Statement, StepResult};
 
-pub struct TursoRows<'conn> {
+pub struct TursoRows {
     stmt: Arc<Mutex<Statement>>,
     state: RowsState,
-    _conn: &'conn mut TursoConn,
+    _conn: *mut TursoConn,
     err: Option<LimboError>,
 }
 
@@ -24,8 +24,8 @@ enum RowsState {
     Error,
 }
 
-impl<'conn> TursoRows<'conn> {
-    pub fn new(stmt: Arc<Mutex<Statement>>, conn: &'conn mut TursoConn) -> Self {
+impl TursoRows {
+    pub fn new(stmt: Arc<Mutex<Statement>>, conn: *mut TursoConn) -> Self {
         TursoRows {
             stmt,
             state: RowsState::Init,
@@ -39,7 +39,7 @@ impl<'conn> TursoRows<'conn> {
         Box::into_raw(Box::new(self)) as *mut c_void
     }
 
-    pub fn from_ptr(ptr: *mut c_void) -> &'conn mut TursoRows<'conn> {
+    pub fn from_ptr(ptr: *mut c_void) -> &'static mut TursoRows {
         if ptr.is_null() {
             panic!("Null pointer");
         }

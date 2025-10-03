@@ -67,7 +67,7 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	if ResultCode(ok) != Ok {
 		return nil, fmt.Errorf("error resetting statement: %s", ResultCode(ok).String())
 	}
-	res := stmtExec(ls.ctx, argPtr, int32(len(argArray)), uintptr(unsafe.Pointer(&changes)))
+	res := stmtExec(ls.ctx, argPtr, uint64(len(argArray)), uintptr(unsafe.Pointer(&changes)))
 	switch ResultCode(res) {
 	case Ok, Done:
 		haveLast := false

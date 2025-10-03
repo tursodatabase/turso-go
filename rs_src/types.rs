@@ -196,18 +196,8 @@ impl TursoValue {
     // then they can be cleaned up immediately afterwards
     pub fn to_value(&self, pool: &mut AllocPool) -> turso_core::Value {
         match self.value_type {
-            ValueType::Integer => {
-                if unsafe { self.value.int_val == 0 } {
-                    return turso_core::Value::Null;
-                }
-                turso_core::Value::Integer(unsafe { self.value.int_val })
-            }
-            ValueType::Real => {
-                if unsafe { self.value.real_val == 0.0 } {
-                    return turso_core::Value::Null;
-                }
-                turso_core::Value::Float(unsafe { self.value.real_val })
-            }
+            ValueType::Integer => turso_core::Value::Integer(unsafe { self.value.int_val }),
+            ValueType::Real => turso_core::Value::Float(unsafe { self.value.real_val }),
             ValueType::Text => {
                 if unsafe { self.value.text_ptr.is_null() } {
                     return turso_core::Value::Null;

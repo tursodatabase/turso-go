@@ -52,7 +52,7 @@ pub extern "C" fn stmt_reset(ctx: *mut c_void) -> ResultCode {
 pub extern "C" fn stmt_execute(
     ctx: *mut c_void,
     args_ptr: *mut TursoValue,
-    arg_count: i32,
+    arg_count: usize,
     changes: *mut i64,
 ) -> ResultCode {
     if ctx.is_null() {
@@ -62,7 +62,7 @@ pub extern "C" fn stmt_execute(
 
     tracing::trace!("Executing statement with {arg_count} parameters");
     let args = if !args_ptr.is_null() && arg_count > 0 {
-        unsafe { std::slice::from_raw_parts(args_ptr, arg_count as usize) }
+        unsafe { std::slice::from_raw_parts(args_ptr, arg_count) }
     } else {
         &[]
     };
@@ -75,6 +75,7 @@ pub extern "C" fn stmt_execute(
         let val = arg.to_value(&mut pool);
         statement.bind_at(NonZero::new(i + 1).unwrap(), val);
     }
+    std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
     loop {
         match statement.step() {
             Ok(StepResult::Row) => {
@@ -110,7 +111,7 @@ pub extern "C" fn stmt_execute(
             }
             Err(err) => {
                 tracing::error!("Error during statement execution: {:?}", err);
-                stmt.conn.err = Some(err);
+                unsafe { &mut (*stmt.conn) }.err = Some(err);
                 return ResultCode::Error;
             }
         }
@@ -154,6 +155,7 @@ pub extern "C" fn stmt_query(
             let val = arg.to_value(&mut pool);
             statement.bind_at(NonZero::new(i + 1).unwrap(), val);
         }
+        std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         TursoRows::new(stmt.statement.clone(), stmt.conn).to_ptr()
     } else {
         tracing::error!("stmt_query: Statement is locked");
@@ -161,9 +163,9 @@ pub extern "C" fn stmt_query(
     }
 }
 
-pub struct TursoStatement<'conn> {
+pub struct TursoStatement {
     pub statement: Arc<Mutex<Statement>>,
-    pub conn: &'conn mut TursoConn,
+    pub conn: *mut TursoConn,
     pub err: Option<LimboError>,
 }
 
@@ -186,8 +188,8 @@ pub extern "C" fn stmt_get_error(ctx: *mut c_void) -> *const c_char {
     stmt.get_error()
 }
 
-impl<'conn> TursoStatement<'conn> {
-    pub fn new(statement: Arc<Mutex<Statement>>, conn: &'conn mut TursoConn) -> Self {
+impl TursoStatement {
+    pub fn new(statement: Arc<Mutex<Statement>>, conn: *mut TursoConn) -> Self {
         TursoStatement {
             statement,
             conn,
@@ -200,7 +202,7 @@ impl<'conn> TursoStatement<'conn> {
         Box::into_raw(Box::new(self)) as *mut c_void
     }
 
-    fn from_ptr(ptr: *mut c_void) -> &'conn mut TursoStatement<'conn> {
+    fn from_ptr(ptr: *mut c_void) -> &'static mut TursoStatement {
         if ptr.is_null() {
             panic!("Null pointer");
         }
@@ -236,7 +238,7 @@ pub unsafe extern "C" fn stmt_last_insert_id(ctx: *mut c_void, val: *mut i64) ->
         stmt.err = Some(LimboError::InvalidArgument(err.to_string()));
         return ResultCode::Invalid;
     }
-    unsafe { *val = stmt.conn.conn.last_insert_rowid() }
+    unsafe { *val = (*stmt.conn).conn.last_insert_rowid() }
     ResultCode::Ok
 }
 

@@ -109,7 +109,7 @@ func (r *tursoRows) Columns() []string {
 	for i := 0; i < int(count); i++ {
 		cstr := rowsGetColumnName(r.ctx, int32(i))
 		raw := GoString(cstr)
-		freeCString(cstr)
+		defer freeCString(cstr)
 		cols = append(cols, dequoteIdent(baseName(raw)))
 	}
 	r.columns = cols
@@ -163,7 +163,7 @@ func (r *tursoRows) Next(dest []driver.Value) error {
 				dest = dest[:ncol]
 			}
 			for i := 0; i < len(dest); i++ {
-				vp := rowsGetValue(r.ctx, int32(i))
+				vp := rowsGetValue(r.ctx, uint64(i))
 				if vp == 0 {
 					if e := r.getError(); e != nil {
 						r.err = e
