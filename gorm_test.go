@@ -151,6 +151,28 @@ func TestGormUpsert(t *testing.T) {
 	}
 }
 
+func TestReturningLimitParameters(t *testing.T) {
+	db := openGormDB(t)
+	err := db.AutoMigrate(&Database{})
+	if err != nil {
+		t.Fatalf("automigrate failed: %v", err)
+	}
+	record := Database{
+		Hostname:  "returning-test.local",
+		Namespace: "ns-returning",
+		Address:   "http://returning",
+	}
+	sql := "SELECT id FROM databases WHERE hostname = ? LIMIT ? OFFSET ?"
+	id := uint(0)
+	err = db.Raw(sql, id, 1, 0).Scan(&record.ID).Error
+	if err != nil {
+		t.Fatalf("raw query failed: %v", err)
+	}
+	if record.ID != 0 {
+		t.Fatalf("expected ID to be 0, got %d", record.ID)
+	}
+}
+
 func TestGormUpsertWithReturning(t *testing.T) {
 	db := openGormDB(t)
 	err := db.AutoMigrate(&Database{})
