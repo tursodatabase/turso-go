@@ -646,6 +646,40 @@ func TestParameterOrdering(t *testing.T) {
 	}
 }
 
+func TestLimitOffsetParameters(t *testing.T) {
+	newConn := openMem(t)
+	sql := "CREATE TABLE test (a, b);"
+	_, err := newConn.Exec(sql)
+	if err != nil {
+		t.Fatal("Error creating table")
+	}
+	sql = "INSERT INTO test (a, b) VALUES (1, 'a'), (2,'b'), (3,'c'), (4,'c'), (5,'d');"
+	_, err = newConn.Exec(sql)
+	if err != nil {
+		t.Fatal("Error inserting data")
+	}
+	sql = "SELECT a, b FROM test ORDER BY b DESC LIMIT ? OFFSET ?;"
+	query, err := newConn.Prepare(sql)
+	if err != nil {
+		t.Fatalf("Error preparing statement: %v", err)
+	}
+	limit := 2
+	offset := 1
+	expected := []int{4, 3}
+	rows, err := query.Query(limit, offset)
+	if err != nil {
+		t.Fatalf("Error executing query: %v", err)
+	}
+	var a int
+	var b string
+	for rows.Next() {
+		rows.Scan(&a, &b)
+		if a != expected[0] && a != expected[1] {
+			t.Fatalf("Expected %d or %d, got %d", expected[0], expected[1], a)
+		}
+	}
+}
+
 func TestIndex(t *testing.T) {
 	newConn := openMem(t)
 	sql := "CREATE TABLE users (name TEXT PRIMARY KEY, email TEXT)"
