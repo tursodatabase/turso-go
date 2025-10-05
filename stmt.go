@@ -11,38 +11,40 @@ import (
 
 type tursoStmt struct {
 	mu  sync.Mutex
-	ctx uintptr
+	ptr uintptr
+	ctx context.Context
 	sql string
 	err error
 }
 
-func newStmt(ctx uintptr, sql string) *tursoStmt {
+func newStmt(opaqueCtx uintptr, sql string, ctx context.Context) *tursoStmt {
 	return &tursoStmt{
-		ctx: uintptr(ctx),
+		ptr: uintptr(opaqueCtx),
 		sql: sql,
 		err: nil,
+		ctx: ctx,
 	}
 }
 
 func (ls *tursoStmt) NumInput() int {
 	ls.mu.Lock()
-	defer ls.mu.Unlock()
-	res := int(stmtParamCount(ls.ctx))
+	res := int(stmtParamCount(ls.ptr))
 	if res < 0 {
 		// set the error from rust
 		_ = ls.getError()
 	}
+	ls.mu.Unlock()
 	return res
 }
 
 func (ls *tursoStmt) Close() error {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-	if ls.ctx == 0 {
+	if ls.ptr == 0 {
 		return nil
 	}
-	res := stmtClose(ls.ctx)
-	ls.ctx = 0
+	ls.mu.Lock()
+	res := stmtClose(ls.ptr)
+	ls.mu.Unlock()
+	ls.ptr = 0
 	if ResultCode(res) != Ok {
 		return fmt.Errorf("error closing statement: %s", ResultCode(res).String())
 	}
@@ -63,16 +65,16 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	var changes int64
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
-	ok := stmtReset(ls.ctx)
+	ok := stmtReset(ls.ptr)
 	if ResultCode(ok) != Ok {
 		return nil, fmt.Errorf("error resetting statement: %s", ResultCode(ok).String())
 	}
-	res := stmtExec(ls.ctx, argPtr, uint64(len(argArray)), uintptr(unsafe.Pointer(&changes)))
+	res := stmtExec(ls.ptr, argPtr, uint64(len(argArray)), uintptr(unsafe.Pointer(&changes)), 0)
 	switch ResultCode(res) {
 	case Ok, Done:
 		haveLast := false
 		var last int64
-		if rc := ResultCode(stmtLastInsertId(ls.ctx, uintptr(unsafe.Pointer(&last)))); rc == Ok {
+		if rc := ResultCode(stmtLastInsertId(ls.ptr, uintptr(unsafe.Pointer(&last)))); rc == Ok {
 			haveLast = true
 		}
 		return tursoResult{lastID: last, haveLast: haveLast, rows: changes}, nil
@@ -104,7 +106,7 @@ func (ls *tursoStmt) Query(args []driver.Value) (driver.Rows, error) {
 	}
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
-	rowsPtr := stmtQuery(ls.ctx, argPtr, uint64(len(queryArgs)))
+	rowsPtr := stmtQuery(ls.ptr, argPtr, uint64(len(queryArgs)), 0)
 	if rowsPtr == 0 {
 		if e := ls.getError(); e != nil {
 			return nil, e
@@ -115,16 +117,61 @@ func (ls *tursoStmt) Query(args []driver.Value) (driver.Rows, error) {
 }
 
 func (ls *tursoStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	stripped := namedValueToValue(args)
+	// Use the more restrictive context and check it before starting
+	execCtx := ls.mergeContexts(ctx)
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-execCtx.Done():
+		return nil, execCtx.Err()
 	default:
-		return ls.Exec(stripped)
+	}
+
+	argArray, cleanup, err := buildNamedArgs(args)
+	defer cleanup()
+	if err != nil {
+		return nil, err
+	}
+	argPtr := uintptr(0)
+	if len(argArray) > 0 {
+		argPtr = uintptr(unsafe.Pointer(&argArray[0]))
+	}
+
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ok := stmtReset(ls.ptr)
+	if ResultCode(ok) != Ok {
+		return nil, fmt.Errorf("error resetting statement: %s", ResultCode(ok))
+	}
+	var changes int64
+	res := stmtExec(ls.ptr, argPtr, uint64(len(argArray)), uintptr(unsafe.Pointer(&changes)), getTimeoutMs(ctx))
+
+	switch ResultCode(res) {
+	case Ok, Done:
+		haveLast := false
+		var last int64
+		if rc := ResultCode(stmtLastInsertId(ls.ptr, uintptr(unsafe.Pointer(&last)))); rc == Ok {
+			haveLast = true
+		}
+		return tursoResult{lastID: last, haveLast: haveLast, rows: changes}, nil
+	case Interrupt:
+		return nil, context.DeadlineExceeded
+	case Busy:
+		return nil, errors.New("database is locked")
+	default:
+		if e := ls.getError(); e != nil {
+			return nil, e
+		} else {
+			return nil, fmt.Errorf("execute failed: %s", ResultCode(res))
+		}
 	}
 }
 
 func (ls *tursoStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	mergedCtx := ls.mergeContexts(ctx)
+	select {
+	case <-mergedCtx.Done():
+		return nil, mergedCtx.Err()
+	default:
+	}
 	queryArgs, allocs, err := buildNamedArgs(args)
 	defer allocs()
 	if err != nil {
@@ -137,10 +184,10 @@ func (ls *tursoStmt) QueryContext(ctx context.Context, args []driver.NamedValue)
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-mergedCtx.Done():
+		return nil, mergedCtx.Err()
 	default:
-		rowsPtr := stmtQuery(ls.ctx, argsPtr, uint64(len(queryArgs)))
+		rowsPtr := stmtQuery(ls.ptr, argsPtr, uint64(len(queryArgs)), getTimeoutMs(mergedCtx))
 		if rowsPtr == 0 {
 			return nil, ls.getError()
 		}
@@ -159,7 +206,7 @@ func (ls *tursoStmt) Err() error {
 
 // mutex should always be locked when calling - always called after FFI
 func (ls *tursoStmt) getError() error {
-	err := stmtGetError(ls.ctx)
+	err := stmtGetError(ls.ptr)
 	if err == 0 {
 		return errors.New("unknown error")
 	}
