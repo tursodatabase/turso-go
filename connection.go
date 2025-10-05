@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ebitengine/purego"
 )
@@ -30,7 +31,7 @@ var (
 	dbOpen            func(string) uintptr
 	dbClose           func(uintptr)
 	stmtLastInsertId  func(uintptr, uintptr) int32
-	connPrepare       func(uintptr, string) uintptr
+	connPrepare       func(uintptr, string, uint64) uintptr
 	connGetError      func(uintptr) uintptr
 	stmtChanges       func(uintptr, uintptr) int32
 	stmtReset         func(uintptr) int32
@@ -43,8 +44,8 @@ var (
 	rowsGetError      func(uintptr) uintptr
 	closeRows         func(uintptr)
 	rowsNext          func(uintptr) int32
-	stmtQuery         func(stmtPtr uintptr, argsPtr uintptr, argCount uint64) uintptr
-	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount uint64, changes uintptr) int32
+	stmtQuery         func(stmtPtr uintptr, argsPtr uintptr, argCount uint64, timeoutMs uint64) uintptr
+	stmtExec          func(stmtPtr uintptr, argsPtr uintptr, argCount uint64, changes uintptr, timeoutMs uint64) int32
 	stmtParamCount    func(uintptr) int32
 	stmtGetError      func(uintptr) uintptr
 	stmtClose         func(uintptr) int32
@@ -93,7 +94,7 @@ func (d *tursoDriver) Open(name string) (driver.Conn, error) {
 }
 
 type tursoConn struct {
-	sync.Mutex
+	mu  sync.Mutex
 	ctx uintptr
 }
 
@@ -102,19 +103,20 @@ func openConn(dsn string) (*tursoConn, error) {
 	if ctx == 0 {
 		return nil, fmt.Errorf("failed to open database for dsn=%q", dsn)
 	}
-	return &tursoConn{
-		sync.Mutex{},
-		ctx,
-	}, loadErr
+	conn := &tursoConn{
+		mu:  sync.Mutex{},
+		ctx: ctx,
+	}
+	return conn, loadErr
 }
 
 func (c *tursoConn) Close() error {
 	if c.ctx == 0 {
 		return nil
 	}
-	c.Lock()
+	c.mu.Lock()
 	dbClose(c.ctx)
-	c.Unlock()
+	c.mu.Unlock()
 	c.ctx = 0
 	return nil
 }
@@ -158,21 +160,34 @@ func (c *tursoConn) PrepareContext(ctx context.Context, query string) (driver.St
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-		return c.Prepare(query)
 	}
+
+	if c.ctx == 0 {
+		return nil, errors.New("connection closed")
+	}
+	c.mu.Lock()
+	stmtPtr := connPrepare(c.ctx, query, getTimeoutMs(ctx))
+	c.mu.Unlock()
+	if stmtPtr == 0 {
+		return nil, c.getError()
+	}
+
+	stmt := newStmt(stmtPtr, query, ctx)
+
+	return stmt, nil
 }
 
 func (c *tursoConn) Prepare(query string) (driver.Stmt, error) {
 	if c.ctx == 0 {
 		return nil, errors.New("connection closed")
 	}
-	c.Lock()
-	defer c.Unlock()
-	stmtPtr := connPrepare(c.ctx, query)
+	c.mu.Lock()
+	stmtPtr := connPrepare(c.ctx, query, 0)
+	c.mu.Unlock()
 	if stmtPtr == 0 {
 		return nil, c.getError()
 	}
-	return newStmt(stmtPtr, query), nil
+	return newStmt(stmtPtr, query, context.Background()), nil
 }
 
 // tursoTx implements driver.Tx
@@ -182,20 +197,19 @@ type tursoTx struct {
 
 // Begin starts a new transaction with default isolation level
 func (c *tursoConn) Begin() (driver.Tx, error) {
-	c.Lock()
-	defer c.Unlock()
-
 	if c.ctx == 0 {
 		return nil, errors.New("connection closed")
 	}
 
 	// Execute BEGIN statement
-	stmtPtr := connPrepare(c.ctx, "BEGIN")
+	c.mu.Lock()
+	stmtPtr := connPrepare(c.ctx, "BEGIN", 0)
+	c.mu.Unlock()
 	if stmtPtr == 0 {
 		return nil, c.getError()
 	}
 
-	stmt := newStmt(stmtPtr, "BEGIN")
+	stmt := newStmt(stmtPtr, "BEGIN", context.Background())
 	defer stmt.Close()
 
 	_, err := stmt.Exec(nil)
@@ -226,19 +240,18 @@ func (c *tursoConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.
 
 // Commit commits the transaction
 func (tx *tursoTx) Commit() error {
-	tx.conn.Lock()
-	defer tx.conn.Unlock()
-
 	if tx.conn.ctx == 0 {
 		return errors.New("connection closed")
 	}
 
-	stmtPtr := connPrepare(tx.conn.ctx, "COMMIT")
+	tx.conn.mu.Lock()
+	stmtPtr := connPrepare(tx.conn.ctx, "COMMIT", 0)
+	tx.conn.mu.Unlock()
 	if stmtPtr == 0 {
 		return tx.conn.getError()
 	}
 
-	stmt := newStmt(stmtPtr, "COMMIT")
+	stmt := newStmt(stmtPtr, "COMMIT", context.Background())
 	defer stmt.Close()
 
 	_, err := stmt.Exec(nil)
@@ -247,21 +260,59 @@ func (tx *tursoTx) Commit() error {
 
 // Rollback aborts the transaction.
 func (tx *tursoTx) Rollback() error {
-	tx.conn.Lock()
-	defer tx.conn.Unlock()
-
 	if tx.conn.ctx == 0 {
 		return errors.New("connection closed")
 	}
 
-	stmtPtr := connPrepare(tx.conn.ctx, "ROLLBACK")
+	tx.conn.mu.Lock()
+	stmtPtr := connPrepare(tx.conn.ctx, "ROLLBACK", 0)
+	tx.conn.mu.Unlock()
 	if stmtPtr == 0 {
 		return tx.conn.getError()
 	}
 
-	stmt := newStmt(stmtPtr, "ROLLBACK")
+	stmt := newStmt(stmtPtr, "ROLLBACK", context.Background())
 	defer stmt.Close()
 
 	_, err := stmt.Exec(nil)
 	return err
+}
+
+// Returns the timeout in milliseconds from the context deadline, or a default of 5000ms if no deadline is set
+func getTimeoutMs(ctx context.Context) uint64 {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return 5000 // Default 5 second timeout
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 0 // Already expired
+	}
+	ms := remaining.Milliseconds()
+	return uint64(ms)
+}
+
+// Returns a merged context with the earlier deadline between the statement's context and the provided context
+func (ls *tursoStmt) mergeContexts(ctx context.Context) context.Context {
+	// If statement has no context, use the provided one
+	if ls.ctx == nil {
+		return ctx
+	}
+
+	// If provided context has no deadline, use statement's
+	execDeadline, execHasDeadline := ctx.Deadline()
+	if !execHasDeadline {
+		return ls.ctx
+	}
+
+	// If statement context has no deadline, use provided
+	stmtDeadline, stmtHasDeadline := ls.ctx.Deadline()
+	if !stmtHasDeadline {
+		return ctx
+	}
+	// Use the earlier deadline
+	if execDeadline.Before(stmtDeadline) {
+		return ctx
+	}
+	return ls.ctx
 }
