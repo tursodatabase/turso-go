@@ -32,8 +32,12 @@ func TestMain(m *testing.M) {
 	if connErr != nil {
 		panic(connErr)
 	}
+	err := conn.Ping()
+	if err != err {
+		log.Fatalf("Error pinging database: %v", err)
+	}
 	defer conn.Close()
-	err := createTable(conn)
+	err = createTable(conn)
 	if err != nil {
 		log.Fatalf("Error creating table: %v", err)
 	}
