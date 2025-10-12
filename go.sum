@@ -1,5 +1,5 @@
-github.com/ebitengine/purego v0.8.3-0.20250507171810-1638563e3615 h1:W7mpP4uiOAbBOdDnRXT9EUdauFv7bz+ERT5rPIord00=
-github.com/ebitengine/purego v0.8.3-0.20250507171810-1638563e3615/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
+github.com/ebitengine/purego v0.10.0-alpha.2 h1:aUB+wqQ6KpzMMOskWW4jOvxTfJEctVtFxSxUHv3md+8=
+github.com/ebitengine/purego v0.10.0-alpha.2/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
