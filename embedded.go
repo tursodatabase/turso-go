@@ -27,10 +27,13 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -44,6 +47,24 @@ var (
 	extractedPath string
 	extractErr    error
 )
+
+// isMuslLibc detects if the system is using musl libc (Alpine Linux, Void Linux, etc.)
+func isMuslLibc() bool {
+	// Check for Alpine release file
+	if _, err := os.Stat("/etc/alpine-release"); err == nil {
+		return true
+	}
+
+	// Check ldd output for musl - more reliable for detecting any musl-based system
+	cmd := exec.Command("ldd", "--version")
+	if output, err := cmd.CombinedOutput(); err == nil {
+		if strings.Contains(strings.ToLower(string(output)), "musl") {
+			return true
+		}
+	}
+
+	return false
+}
 
 // extractEmbeddedLibrary extracts the library for the current platform
 // to a temporary directory and returns the path to the extracted library
@@ -79,10 +100,27 @@ func extractEmbeddedLibrary() (string, error) {
 			return
 		}
 
-		// Create platform directory string
-		platformDir = fmt.Sprintf("%s_%s", runtime.GOOS, archSuffix)
+		// Detect libc variant on Linux (musl for Alpine)
+		libcVariant := ""
+		if runtime.GOOS == "linux" {
+			if isMuslLibc() {
+				libcVariant = "_musl"
+			}
+		}
 
+		// Create platform directory string
+		platformDir = fmt.Sprintf("%s%s_%s", runtime.GOOS, libcVariant, archSuffix)
+
+		// Try to find the embedded library - first with detected platform,
+		// then fallback to glibc variant on Linux if musl is not available
 		embedPath := path.Join("libs", platformDir, libName)
+		fallbackPaths := []string{embedPath}
+
+		// If we're on musl Linux but the musl library isn't available, try glibc
+		if runtime.GOOS == "linux" && libcVariant == "_musl" {
+			glibcPlatform := fmt.Sprintf("%s_%s", runtime.GOOS, archSuffix)
+			fallbackPaths = append(fallbackPaths, path.Join("libs", glibcPlatform, libName))
+		}
 
 		cacheRoot := os.Getenv("TURSO_GO_CACHE_DIR")
 		if cacheRoot == "" {
@@ -104,10 +142,19 @@ func extractEmbeddedLibrary() (string, error) {
 			return
 		}
 
-		// open from embed, write to disk
-		in, err := embeddedLibs.Open(embedPath)
-		if err != nil {
-			extractErr = fmt.Errorf("open embedded %s: %w", embedPath, err)
+		// Try each path until we find one that exists
+		var in fs.File
+		var err error
+		foundPath := ""
+		for _, tryPath := range fallbackPaths {
+			in, err = embeddedLibs.Open(tryPath)
+			if err == nil {
+				foundPath = tryPath
+				break
+			}
+		}
+		if foundPath == "" {
+			extractErr = fmt.Errorf("open embedded library (tried %v): %w", fallbackPaths, err)
 			return
 		}
 		defer in.Close()
