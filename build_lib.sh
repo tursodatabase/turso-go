@@ -23,24 +23,70 @@ case "$UNAME_M" in
   i386|i686) ARCH=386 ;;
   *) echo "Unsupported arch: $UNAME_M"; exit 1 ;;
 esac
+
+# Detect libc variant on Linux
+LIBC_VARIANT=""
+if [[ "$UNAME_S" == Linux* ]]; then
+  # Check if we're on musl-based system (Alpine)
+  if ldd --version 2>&1 | grep -qi musl; then
+    LIBC_VARIANT="_musl"
+  elif [ -f /etc/alpine-release ]; then
+    # Fallback detection for Alpine Linux
+    LIBC_VARIANT="_musl"
+  fi
+fi
+
 case "$UNAME_S" in
   Linux*)  OS=linux  ;;
   Darwin*) OS=darwin ;;
   MINGW*|MSYS*|CYGWIN*) OS=windows ;;
   *) echo "Unsupported OS: $UNAME_S"; exit 1 ;;
 esac
-PLATFORM="${OS}_${ARCH}"
+PLATFORM="${OS}${LIBC_VARIANT}_${ARCH}"
 
 case "$OS" in
-  linux)   OUTPUT_NAME="lib${LIB_BASENAME}.so" ;;
+  linux)
+    if [[ "$LIBC_VARIANT" == "_musl" ]]; then
+      OUTPUT_NAME="lib${LIB_BASENAME}.a"
+    else
+      OUTPUT_NAME="lib${LIB_BASENAME}.so"
+    fi
+    ;;
   darwin)  OUTPUT_NAME="lib${LIB_BASENAME}.dylib" ;;
   windows) OUTPUT_NAME="${LIB_BASENAME}.dll" ;;
 esac
 
+# Set Rust target for musl builds
+RUST_TARGET=""
+if [[ "$LIBC_VARIANT" == "_musl" ]]; then
+  case "$ARCH" in
+    amd64) RUST_TARGET="x86_64-unknown-linux-musl" ;;
+    arm64) RUST_TARGET="aarch64-unknown-linux-musl" ;;
+    *) echo "Unsupported musl arch: $ARCH"; exit 1 ;;
+  esac
+  # Check if rustup is available and if the target needs to be installed
+  if command -v rustup >/dev/null 2>&1; then
+    if ! rustup target list --installed | grep -q "$RUST_TARGET"; then
+      echo "Installing Rust target: $RUST_TARGET"
+      rustup target add "$RUST_TARGET"
+    fi
+  else
+    # rustup not available (e.g., Rust installed via package manager)
+    # Assume the musl target is already available or will be handled by cargo
+    echo "rustup not found, assuming $RUST_TARGET is available"
+  fi
+  CARGO_ARGS+=("--target" "$RUST_TARGET")
+fi
+
 echo "Building ${CRATE_PACKAGE} ($BUILD_TYPE) for ${PLATFORM}…"
 cargo build "${CARGO_ARGS[@]}" --package "${CRATE_PACKAGE}"
 
-OUT_DIR="target/${TARGET_DIR}"
+# Determine output directory (changes when using --target)
+if [[ -n "$RUST_TARGET" ]]; then
+  OUT_DIR="target/${RUST_TARGET}/${TARGET_DIR}"
+else
+  OUT_DIR="target/${TARGET_DIR}"
+fi
 ART="${OUT_DIR}/${OUTPUT_NAME}"
 
 if [[ ! -f "$ART" ]]; then

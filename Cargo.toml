@@ -7,7 +7,7 @@ build = "rs_src/build.rs"
 
 [lib]
 name = "turso_go"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
 path = "rs_src/lib.rs"
 
 [dependencies]
