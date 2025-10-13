@@ -20,6 +20,14 @@ jobs:
           - name: linux_arm64
             os: ubuntu-24.04-arm
             lib_relpath: libs/linux_arm64/libturso_go.so
+          - name: linux_musl_amd64
+            os: ubuntu-latest
+            container: alpine:latest
+            lib_relpath: libs/linux_musl_amd64/libturso_go.so
+          - name: linux_musl_arm64
+            os: ubuntu-24.04-arm
+            build_musl: true
+            lib_relpath: libs/linux_musl_arm64/libturso_go.so
           - name: macos_amd64
             os: macos-13
             lib_relpath: libs/darwin_amd64/libturso_go.dylib
@@ -31,8 +39,18 @@ jobs:
             lib_relpath: libs/windows_amd64/turso_go.dll
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
 
     steps:
+      - name: Install Alpine dependencies
+        if: matrix.container == 'alpine:latest'
+        run: |
+          apk add --no-cache bash curl gcc musl-dev git go
+          # Install Rust
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - uses: actions/checkout@v4
 
       - name: Probe platform library
@@ -53,8 +71,22 @@ jobs:
         if: steps.probe.outputs.present != 'true'
         run: echo "No ${{ matrix.lib_relpath }} present; skipping."
 
+      - name: Install musl tools for cross-compile
+        if: steps.probe.outputs.present == 'true' && matrix.build_musl == true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Set up Rust
+        if: steps.probe.outputs.present == 'true' && matrix.container != 'alpine:latest'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add musl target
+        if: steps.probe.outputs.present == 'true' && matrix.build_musl == true
+        run: rustup target add aarch64-unknown-linux-musl
+
       - uses: actions/setup-go@v5
-        if: steps.probe.outputs.present == 'true'
+        if: steps.probe.outputs.present == 'true' && matrix.container != 'alpine:latest'
         with:
           go-version: "1.23.x"
           check-latest: true
@@ -63,6 +95,7 @@ jobs:
         if: steps.probe.outputs.present == 'true'
         env:
           TURSO_GO_NOCACHE: 1
+        shell: bash
         run: |
-          ./build_lib.sh
-           go test -v ./...
+          bash build_lib.sh
+          go test -v ./...
