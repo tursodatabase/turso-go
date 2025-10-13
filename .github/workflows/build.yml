@@ -13,16 +13,36 @@ concurrency:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}${{ matrix.name_suffix || '' }})
     strategy:
       fail-fast: false
       matrix:
-        os:
-          [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-13, windows-latest]
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+          - os: macos-14
+          - os: macos-13
+          - os: windows-latest
+          - os: ubuntu-latest
+            container: alpine:latest
+            name_suffix: " (Alpine x64)"
+          - os: ubuntu-24.04-arm
+            build_musl: true
+            name_suffix: " (musl cross-compile)"
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
 
     steps:
+      - name: Install Alpine dependencies
+        if: matrix.container == 'alpine:latest'
+        run: |
+          apk add --no-cache bash curl gcc musl-dev git
+          # Install Rust
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -32,10 +52,22 @@ jobs:
         shell: bash
         run: rm -rf libs && mkdir -p libs
 
+      - name: Install musl tools for cross-compile
+        if: matrix.build_musl == true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Set up Rust
+        if: matrix.container != 'alpine:latest'
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Add musl target
+        if: matrix.build_musl == true
+        run: rustup target add aarch64-unknown-linux-musl
+
       - name: Cache cargo
+        if: matrix.container != 'alpine:latest'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -45,7 +77,20 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x ./build_lib.sh
 
+      - name: Build cdylib (release) - musl cross-compile
+        if: matrix.build_musl == true
+        shell: bash
+        run: |
+          # Force musl build
+          export CARGO_ARGS="--release --target aarch64-unknown-linux-musl"
+          cargo build --release --target aarch64-unknown-linux-musl --package turso-go
+          mkdir -p libs/linux_musl_arm64
+          cp target/aarch64-unknown-linux-musl/release/libturso_go.a libs/linux_musl_arm64/
+          echo "After build, libs/ contains:"
+          find libs -maxdepth 2 -type f || true
+
       - name: Build cdylib (release)
+        if: matrix.build_musl != true
         shell: bash
         run: |
           ./build_lib.sh release
