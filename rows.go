@@ -29,6 +29,12 @@ func newRows(ctx uintptr) *tursoRows {
 	}
 }
 
+// database/sql driver.go 462
+/**
+* RowsColumnTypeScanType may be implemented by [Rows]. It should return
+* the value type that can be used to scan types into. For example, the database
+* column type "bigint" this should return "[reflect.TypeOf](int64(0))".
+**/
 func (r *tursoRows) ColumnTypeScanType(idx int) reflect.Type {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -92,6 +98,13 @@ func baseName(s string) string {
 	return parts[len(parts)-1]
 }
 
+// database/sql driver.go 425
+/**
+* Columns returns the names of the columns. The number of
+* columns of the result is inferred from the length of the
+* slice. If a particular column name isn't known, an empty
+* string should be returned for that entry.
+**/
 func (r *tursoRows) Columns() []string {
 	if r.isClosed() {
 		return nil
@@ -116,6 +129,10 @@ func (r *tursoRows) Columns() []string {
 	return r.columns
 }
 
+// database/sql driver.go 431
+/**
+* Close closes the rows iterator.
+**/
 func (r *tursoRows) Close() error {
 	if r.isClosed() {
 		return nil
@@ -137,6 +154,18 @@ func (r *tursoRows) Err() error {
 	return r.err
 }
 
+// database/sql driver.go 235
+/**
+* Next is called to populate the next row of data into
+* the provided slice. The provided slice will be the same
+* size as the Columns() are wide.
+*
+* Next should return io.EOF when there are no more rows.
+*
+* The dest should not be written to outside of Next. Care
+* should be taken when closing Rows not to modify
+* a buffer held in dest.
+**/
 func (r *tursoRows) Next(dest []driver.Value) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

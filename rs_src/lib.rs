@@ -10,6 +10,8 @@ extern crate turso_core;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use turso_core::{Connection, LimboError};
 
+use crate::types::ResultCode;
+
 static TRACING_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
 /// # Safety
@@ -35,6 +37,26 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
         panic!("Failed to open connection with path: {path}");
     };
     TursoConn::new(conn, io).to_ptr()
+}
+
+/// # Safety
+/// The caller must ensure that ctx is a valid pointer to a TursoConn.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn db_ping(ctx: *mut c_void) -> ResultCode {
+    let conn = TursoConn::from_ptr(ctx);
+    match conn.conn.query("SELECT 1") {
+        Ok(Some(_)) => ResultCode::Ok,
+        Ok(None) => {
+            conn.err = Some(LimboError::InternalError(
+                "Nothing returned for SELECT 1".to_string(),
+            ));
+            ResultCode::Error
+        }
+        Err(e) => {
+            conn.err = Some(e);
+            ResultCode::Error
+        }
+    }
 }
 
 pub fn init_tracing() -> Result<(), std::io::Error> {

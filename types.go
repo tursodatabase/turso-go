@@ -91,6 +91,7 @@ const (
 	FfiFreeColumns        = "free_columns"
 	FfiFreeCString        = "free_string"
 	FfiFreeBlob           = "free_blob"
+	FfiDbPing             = "db_ping"
 )
 
 var timeLayouts = []string{

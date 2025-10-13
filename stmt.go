@@ -17,15 +17,27 @@ type tursoStmt struct {
 	err error
 }
 
-func newStmt(opaqueCtx uintptr, sql string, ctx context.Context) *tursoStmt {
+func newStmt(opaqueCtx uintptr, sql string) *tursoStmt {
 	return &tursoStmt{
 		ptr: uintptr(opaqueCtx),
 		sql: sql,
 		err: nil,
-		ctx: ctx,
+		ctx: context.Background(),
 	}
 }
 
+// database/sql driver.go 340
+/**
+* NumInput returns the number of placeholder parameters.
+*
+* If NumInput returns >= 0, the sql package will sanity check
+* argument counts from callers and return errors to the caller
+* before the statement's Exec or Query methods are called.
+*
+* NumInput may also return -1, if the driver doesn't know
+* its number of placeholders. In that case, the sql package
+* will not sanity check Exec or Query argument counts.
+**/
 func (ls *tursoStmt) NumInput() int {
 	ls.mu.Lock()
 	res := int(stmtParamCount(ls.ptr))
@@ -94,6 +106,10 @@ func (ls *tursoStmt) Exec(args []driver.Value) (driver.Result, error) {
 	}
 }
 
+// database/sql driver.go 373
+/**
+* StmtQueryContext enhances the [Stmt] interface by providing Query with context.
+**/
 func (ls *tursoStmt) Query(args []driver.Value) (driver.Rows, error) {
 	queryArgs, cleanup, err := buildArgs(args)
 	defer cleanup()
@@ -116,6 +132,13 @@ func (ls *tursoStmt) Query(args []driver.Value) (driver.Rows, error) {
 	return newRows(rowsPtr), nil
 }
 
+// database/sql driver.go 364
+/**
+* ExecContext executes a query that doesn't return rows, such
+* as an INSERT or UPDATE.
+*
+* ExecContext must honor the context timeout and return when it is canceled.
+**/
 func (ls *tursoStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	// Use the more restrictive context and check it before starting
 	execCtx := ls.mergeContexts(ctx)
@@ -165,6 +188,13 @@ func (ls *tursoStmt) ExecContext(ctx context.Context, args []driver.NamedValue) 
 	}
 }
 
+// database/sql driver.go 375
+/**
+* QueryContext executes a query that may return rows, such as a
+* SELECT.
+*
+* QueryContext must honor the context timeout and return when it is canceled.
+**/
 func (ls *tursoStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	mergedCtx := ls.mergeContexts(ctx)
 	select {
