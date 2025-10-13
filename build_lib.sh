@@ -64,10 +64,16 @@ if [[ "$LIBC_VARIANT" == "_musl" ]]; then
     arm64) RUST_TARGET="aarch64-unknown-linux-musl" ;;
     *) echo "Unsupported musl arch: $ARCH"; exit 1 ;;
   esac
-  # Check if the target is installed
-  if ! rustup target list --installed | grep -q "$RUST_TARGET"; then
-    echo "Installing Rust target: $RUST_TARGET"
-    rustup target add "$RUST_TARGET"
+  # Check if rustup is available and if the target needs to be installed
+  if command -v rustup >/dev/null 2>&1; then
+    if ! rustup target list --installed | grep -q "$RUST_TARGET"; then
+      echo "Installing Rust target: $RUST_TARGET"
+      rustup target add "$RUST_TARGET"
+    fi
+  else
+    # rustup not available (e.g., Rust installed via package manager)
+    # Assume the musl target is already available or will be handled by cargo
+    echo "rustup not found, assuming $RUST_TARGET is available"
   fi
   CARGO_ARGS+=("--target" "$RUST_TARGET")
 fi
