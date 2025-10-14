@@ -185,7 +185,7 @@ jobs:
           : > libs/MANIFEST-SHA256.txt
           echo "SHA256 checksums:"
           shopt -s nullglob
-          for f in libs/*/*.so libs/*/*.dylib libs/*/*.dll; do
+          for f in libs/*/*.so libs/*/*.dylib libs/*/*.a libs/*/*.dll; do
             [ -f "$f" ] || continue
             sum="$(calc "$f")"
             rel="${f#libs/}"
