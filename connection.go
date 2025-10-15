@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -506,4 +507,164 @@ func (ls *tursoStmt) mergeContexts(ctx context.Context) context.Context {
 		return ctx
 	}
 	return ls.ctx
+}
+
+// ExecContext handles multi-statement execution when no parameters are provided.
+// With parameters, it returns driver.ErrSkip to let database/sql use Prepare/Exec.
+// Note: multi-statement execution is not atomic. Use explicit transactions for atomicity.
+func (c *tursoConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	if c.ctx == 0 {
+		return nil, errors.New("connection closed")
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	stmts := splitMultiStatements(query)
+	if len(stmts) == 0 {
+		return tursoResult{}, nil
+	}
+
+	if len(args) > 0 {
+		if len(stmts) == 1 {
+			return nil, driver.ErrSkip
+		}
+		return nil, fmt.Errorf("parameters with multiple SQL statements are not supported; split the query and execute separately")
+	}
+
+	timeoutMs := getTimeoutMs(ctx)
+	var totalChanges, lastID int64
+	var haveLast bool
+
+	for i, sql := range stmts {
+		if strings.TrimSpace(sql) == "" {
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		c.mu.Lock()
+		stmtPtr := connPrepare(c.ctx, sql, timeoutMs)
+		c.mu.Unlock()
+		if stmtPtr == 0 {
+			return nil, c.getError()
+		}
+
+		stmt := newStmt(stmtPtr, sql)
+		res, err := stmt.Exec(nil)
+		stmt.Close()
+
+		if err != nil {
+			if len(stmts) > 1 {
+				return nil, fmt.Errorf("statement %d of %d failed: %w", i+1, len(stmts), err)
+			}
+			return nil, err
+		}
+
+		if rows, _ := res.RowsAffected(); rows > 0 {
+			totalChanges += rows
+		}
+		if id, err := res.LastInsertId(); err == nil {
+			lastID = id
+			haveLast = true
+		}
+	}
+
+	return tursoResult{lastID: lastID, rows: totalChanges, haveLast: haveLast}, nil
+}
+
+// splitMultiStatements splits SQL by semicolons, respecting string literals and comments.
+// Handles SQL standard escaped quotes ('O”Brien') but not all dialect-specific escapes.
+func splitMultiStatements(sql string) []string {
+	var (
+		stmts           []string
+		cur             strings.Builder
+		inStr, inIdent  bool
+		inLine, inBlock bool
+	)
+
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+		next := byte(0)
+		if i+1 < len(sql) {
+			next = sql[i+1]
+		}
+
+		if inLine {
+			cur.WriteByte(c)
+			if c == '\n' {
+				inLine = false
+			}
+			continue
+		}
+
+		if inBlock {
+			cur.WriteByte(c)
+			if c == '*' && next == '/' {
+				inBlock = false
+				i++
+				cur.WriteByte('/')
+			}
+			continue
+		}
+
+		if !inStr && !inIdent {
+			if c == '-' && next == '-' {
+				inLine = true
+				cur.WriteString("--")
+				i++
+				continue
+			}
+			if c == '/' && next == '*' {
+				inBlock = true
+				cur.WriteString("/*")
+				i++
+				continue
+			}
+		}
+
+		if c == '\'' && !inIdent {
+			cur.WriteByte(c)
+			if inStr && next == '\'' {
+				i++
+				cur.WriteByte('\'')
+			} else {
+				inStr = !inStr
+			}
+			continue
+		}
+
+		if c == '"' && !inStr {
+			cur.WriteByte(c)
+			if inIdent && next == '"' {
+				i++
+				cur.WriteByte('"')
+			} else {
+				inIdent = !inIdent
+			}
+			continue
+		}
+
+		if c == ';' && !inStr && !inIdent {
+			if s := strings.TrimSpace(cur.String()); s != "" {
+				stmts = append(stmts, s)
+			}
+			cur.Reset()
+			continue
+		}
+
+		cur.WriteByte(c)
+	}
+
+	if s := strings.TrimSpace(cur.String()); s != "" {
+		stmts = append(stmts, s)
+	}
+	return stmts
 }

@@ -1061,3 +1061,155 @@ func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
 		t.Fatal("expected argument count error, got nil")
 	}
 }
+
+func TestMultiStatementExecution(t *testing.T) {
+	db := openMem(t)
+
+	t.Run("BasicMultiStatement", func(t *testing.T) {
+		_, err := db.Exec(`
+			CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+			INSERT INTO users (name) VALUES ('Alice');
+			INSERT INTO users (name) VALUES ('Bob');
+		`)
+		if err != nil {
+			t.Fatalf("Failed to execute multi-statement: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 2 {
+			t.Errorf("Expected 2 rows, got %d", count)
+		}
+	})
+
+	t.Run("StringsWithSemicolons", func(t *testing.T) {
+		_, err := db.Exec(`
+			CREATE TABLE messages (id INTEGER PRIMARY KEY, text TEXT);
+			INSERT INTO messages (text) VALUES ('Hello; World');
+			INSERT INTO messages (text) VALUES ('Test; Message; Multiple');
+		`)
+		if err != nil {
+			t.Fatalf("Failed to execute with semicolons in strings: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM messages").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 2 {
+			t.Errorf("Expected 2 rows, got %d", count)
+		}
+
+		rows, err := db.Query("SELECT text FROM messages ORDER BY id")
+		if err != nil {
+			t.Fatalf("Failed to query messages: %v", err)
+		}
+		defer rows.Close()
+
+		expected := []string{"Hello; World", "Test; Message; Multiple"}
+		i := 0
+		for rows.Next() {
+			var text string
+			if err := rows.Scan(&text); err != nil {
+				t.Fatalf("Failed to scan: %v", err)
+			}
+			if text != expected[i] {
+				t.Errorf("Row %d: expected %q, got %q", i, expected[i], text)
+			}
+			i++
+		}
+	})
+
+	t.Run("EscapedQuotes", func(t *testing.T) {
+		_, err := db.Exec(`
+			CREATE TABLE names (id INTEGER PRIMARY KEY, name TEXT);
+			INSERT INTO names (name) VALUES ('O''Brien');
+			INSERT INTO names (name) VALUES ('It''s working');
+		`)
+		if err != nil {
+			t.Fatalf("Failed to execute with escaped quotes: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM names").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 2 {
+			t.Errorf("Expected 2 rows, got %d", count)
+		}
+
+		var name string
+		err = db.QueryRow("SELECT name FROM names WHERE id = 1").Scan(&name)
+		if err != nil {
+			t.Fatalf("Failed to query name: %v", err)
+		}
+		if name != "O'Brien" {
+			t.Errorf("Expected \"O'Brien\", got %q", name)
+		}
+	})
+
+	t.Run("EmptyStatements", func(t *testing.T) {
+		_, err := db.Exec(`
+			CREATE TABLE test_empty (id INTEGER);;;
+			INSERT INTO test_empty (id) VALUES (1);;
+		`)
+		if err != nil {
+			t.Fatalf("Failed to execute with empty statements: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM test_empty").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 row, got %d", count)
+		}
+	})
+
+	t.Run("FailureInMiddle", func(t *testing.T) {
+		_, err := db.Exec(`
+			CREATE TABLE partial (id INTEGER PRIMARY KEY);
+			INSERT INTO partial (id) VALUES (1);
+			INSERT INTO partial (id) VALUES (1);
+		`)
+		if err == nil {
+			t.Fatal("Expected error for duplicate key, got nil")
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM partial").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 row (from first INSERT before failure), got %d", count)
+		}
+	})
+
+	t.Run("WithParameters", func(t *testing.T) {
+		_, err := db.Exec(`CREATE TABLE param_test (id INTEGER, name TEXT);`)
+		if err != nil {
+			t.Fatalf("Failed to create table: %v", err)
+		}
+
+		_, err = db.Exec("INSERT INTO param_test (id, name) VALUES (?, ?)", 1, "Test")
+		if err != nil {
+			t.Fatalf("Failed to insert with parameters: %v", err)
+		}
+
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM param_test").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to query count: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 row, got %d", count)
+		}
+	})
+}
