@@ -7,82 +7,26 @@
 
 This driver uses the awesome [purego](https://github.com/ebitengine/purego) library to call C (in this case Rust with C ABI) functions from Go without the use of `CGO`.
 
-## Embedded Library Support
+## Getting Started
 
-This driver includes an embedded library feature that allows you to distribute a single binary without requiring users to set environment variables. The library for your platform is automatically embedded, extracted at runtime, and loaded dynamically.
-
-### Building from Source
-
-To build with embedded library support, follow these steps:
+Install the Turso Go driver using `go get`:
 
 ```bash
-# Clone the repository
-git clone https://github.com/tursodatabase/turso-go
-
-# Build the library (defaults to release build)
-./build_lib.sh
-
-# Alternatively, for faster builds during development:
-./build_lib.sh debug
+go get github.com/tursodatabase/turso-go
 ```
 
-### Build Options:
+Then import it in your Go code:
 
-* Release Build (default): ./build_lib.sh or ./build_lib.sh release
-
-    - Optimized for performance and smaller binary size
-    - Takes longer to compile and requires more system resources
-    - Recommended for production use
-
-* Debug Build: ./build_lib.sh debug
-
-    - Faster compilation times with less resource usage
-    - Larger binary size and slower runtime performance
-    - Recommended during development or if release build fails
-
-If the embedded library cannot be found or extracted, the driver will fall back to the traditional method of finding the library in the system paths.
-
-## To use: (_UNSTABLE_ testing or development purposes only)
-
-### Option 1: Using the embedded library (recommended)
-
-Build the driver with the embedded library as described above, then simply import and use. No environment variables needed!
-
-
-
-### Option 2: Manual library setup
-
-#### Linux | MacOS
-
-_All commands listed are relative to the repository's root directory.
-
-```
-cargo build --release
-
-# Your LD_LIBRARY_PATH environment variable must include `target/release` directory
-
-export LD_LIBRARY_PATH="REPO/target/release:$LD_LIBRARY_PATH"
-
+```go
+import (
+    "database/sql"
+    _ "github.com/tursodatabase/turso-go"
+)
 ```
 
-#### Windows
+The driver includes an embedded library that is automatically extracted and loaded at runtime, so no additional setup or environment variables are required.
 
-```
-cargo build
-
-# You must add turso's `target/release` directory to your PATH
-# or you could built + copy the .dll to a location in your PATH
-# or just the CWD of your go module
-
-cp turso-go\target\release\turso_go.dll .
-
-go test
-
-
-```
-**Temporarily** you may have to clone the turso repository and run:
-
-`go mod edit -replace github.com/tursodatabase/turso=/path/to/turso/bindings/go`
+### Example Usage
 
 ```go
 package main
@@ -119,6 +63,26 @@ func main() {
 
 ```
 
-## Implementation Notes
+## Embedded Library Support
+
+This driver includes an embedded library feature that allows you to distribute a single binary without requiring users to set environment variables. The library for your platform is automatically embedded, extracted at runtime, and loaded dynamically.
+
+If the embedded library cannot be found or extracted, the driver will fall back to the traditional method of finding the library in system paths.
 
 The embedded library feature was inspired by projects like [go-embed-python](https://github.com/kluctl/go-embed-python), which uses a similar approach for embedding and distributing native libraries with Go applications.
+
+## Contributing
+
+For information on building from source, manual library setup, and development instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+This project is licensed under the [MIT license].
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in Turso Database by you, shall be licensed as MIT, without any additional
+terms or conditions.
+
+[MIT license]: LICENSE.md
