@@ -941,6 +941,83 @@ func TestDataTypes(t *testing.T) {
 	}
 }
 
+func TestDefaultValueDataTypes(t *testing.T) {
+	db, err := sql.Open("turso", ":memory:")
+	if err != nil {
+		t.Fatalf("Error opening connection: %s", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE defaults_test (
+			id INTEGER PRIMARY KEY,
+			col_integer INTEGER DEFAULT 42,
+			col_real REAL DEFAULT 3.14159,
+			col_text TEXT DEFAULT 'Hello, 世界',
+			col_blob BLOB DEFAULT X'010203',
+			col_numeric NUMERIC DEFAULT '123.456',
+			col_bool_true BOOLEAN DEFAULT TRUE,
+			col_bool_false BOOLEAN DEFAULT FALSE,
+			col_date DATE DEFAULT CURRENT_TIMESTAMP,
+			col_datetime DATETIME DEFAULT CURRENT_TIMESTAMP,
+			col_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`)
+	if err != nil {
+		t.Fatalf("Error creating table: %s", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO defaults_test (id) VALUES (1)`)
+	if err != nil {
+		t.Fatalf("Error inserting default row: %s", err)
+	}
+
+	// Query and verify each type
+	var (
+		id           int
+		colInt       int
+		colReal      float64
+		colText      string
+		colBlob      []byte
+		colNumeric   string
+		colBoolTrue  int
+		colBoolFalse int
+		colDate      string
+		colDateTime  string
+		colTimestamp time.Time
+	)
+
+	err = db.QueryRow("SELECT * FROM defaults_test").Scan(
+		&id, &colInt, &colReal, &colText, &colBlob, &colNumeric,
+		&colBoolTrue, &colBoolFalse, &colDate, &colDateTime, &colTimestamp,
+	)
+	if err != nil {
+		t.Fatalf("Error scanning default row: %v", err)
+	}
+
+	// Verify values
+	if id != 1 {
+		t.Errorf("ID mismatch: got %d, expected 1", id)
+	}
+	if colInt != 42 {
+		t.Errorf("Integer default mismatch: got %d, expected 100", colInt)
+	}
+	if math.Abs(colReal-3.14159) > 0.00001 {
+		t.Errorf("Real default mismatch: got %f, expected 1.23", colReal)
+	}
+	if colText != "Hello, 世界" {
+		t.Errorf("Text default mismatch: got %s, expected 'default_string'", colText)
+	}
+	if colBoolTrue != 1 {
+		t.Errorf("Boolean TRUE default mismatch: got %d, expected 1", colBoolTrue)
+	}
+	if colBoolFalse != 0 {
+		t.Errorf("Boolean FALSE default mismatch: got %d, expected 0", colBoolFalse)
+	}
+	if !slices.Equal(colBlob, []byte{0x01, 0x02, 0x03}) {
+		t.Errorf("Blob mismatch: got %v", colBlob)
+	}
+}
+
 func createDatabasesTable(t *testing.T, db *sql.DB) {
 	t.Helper()
 	_, err := db.Exec(`
