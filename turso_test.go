@@ -1061,7 +1061,6 @@ func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
 		t.Fatal("expected argument count error, got nil")
 	}
 }
-
 func TestMultiStatementExecution(t *testing.T) {
 	db := openMem(t)
 
@@ -1212,4 +1211,16 @@ func TestMultiStatementExecution(t *testing.T) {
 			t.Errorf("Expected 1 row, got %d", count)
 		}
 	})
+}
+
+func TestIndexMethod(t *testing.T) {
+	db := openMem(t)
+	_, err := db.Exec(`CREATE TABLE vectors (e)`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	_, err = db.Exec(`CREATE INDEX vectors_idx ON vectors USING toy_vector_sparse_ivf (e)`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
 }

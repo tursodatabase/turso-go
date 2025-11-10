@@ -14,5 +14,5 @@ path = "rs_src/lib.rs"
 env_logger = { version = "0.11.6", default-features = false }
 tracing = "0.1.41"
 tracing-appender = "0.2.3"
-tracing-subscriber = {version =  "0.3.20", features = ["env-filter"] }
-turso_core = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+turso_core = { git = "https://github.com/tursodatabase/turso", rev = "a47ac6cb96fbfcbaa19ee1d4eeb2fe8b54803901" }
