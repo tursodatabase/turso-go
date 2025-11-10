@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 		panic(connErr)
 	}
 	err := conn.Ping()
-	if err != err {
+	if err != nil {
 		log.Fatalf("Error pinging database: %v", err)
 	}
 	defer conn.Close()
