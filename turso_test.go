@@ -1061,7 +1061,6 @@ func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
 		t.Fatal("expected argument count error, got nil")
 	}
 }
-
 func TestMultiStatementExecution(t *testing.T) {
 	db := openMem(t)
 
@@ -1212,4 +1211,42 @@ func TestMultiStatementExecution(t *testing.T) {
 			t.Errorf("Expected 1 row, got %d", count)
 		}
 	})
+}
+
+func TestIndexMethod(t *testing.T) {
+	db := openMem(t)
+	_, err := db.Exec(`CREATE TABLE vectors (e)`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	_, err = db.Exec(`CREATE INDEX vectors_idx ON vectors USING toy_vector_sparse_ivf (e)`)
+	if err != nil {
+		t.Fatalf("Failed to create index: %v", err)
+	}
+	rows, err := db.Query("EXPLAIN SELECT vector_distance_jaccard(e, x'') as d FROM vectors ORDER BY d LIMIT 10")
+	if err != nil {
+		t.Fatalf("Failed to explain query: %v", err)
+	}
+	opcodes := make([]string, 0)
+	for rows.Next() {
+		var columns [8]any
+		err = rows.Scan(
+			&columns[0],
+			&columns[1],
+			&columns[2],
+			&columns[3],
+			&columns[4],
+			&columns[5],
+			&columns[6],
+			&columns[7],
+		)
+		if err != nil {
+			t.Fatalf("Failed to read explain row: %v", err)
+		}
+		opcodes = append(opcodes, columns[1].(string))
+	}
+	t.Log(opcodes)
+	if !slices.Contains(opcodes, "IndexMethodQuery") {
+		t.Fatalf("IndexMethod wasn't used for the query %v: %v", opcodes, err)
+	}
 }
