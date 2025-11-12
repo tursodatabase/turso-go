@@ -139,6 +139,25 @@ func (r *tursoRows) Close() error {
 	}
 	r.mu.Lock()
 	r.closed = true
+	if r.err == nil {
+		for {
+			rc := ResultCode(rowsNext(r.ctx))
+			if rc == Row {
+				continue
+			} else if rc == Done {
+				break
+			} else if rc == ConstraintViolation {
+				r.err = errors.New("constraint violation")
+			} else {
+				if e := r.getError(); e != nil {
+					r.err = e
+				} else {
+					r.err = fmt.Errorf("query failed: %s", rc.String())
+				}
+			}
+			break
+		}
+	}
 	closeRows(r.ctx)
 	r.ctx = 0
 	r.mu.Unlock()
