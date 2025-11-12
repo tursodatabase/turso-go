@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 extern crate turso_core;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use turso_core::{Connection, LimboError};
 
 use crate::types::ResultCode;
@@ -32,8 +32,18 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
     let encryption = false;
     let views = false;
     let strict = false;
-    let Ok((io, conn)) = Connection::from_uri(path, indexes, mvcc, views, strict, encryption)
-    else {
+    let custom_modules = false;
+    let autovacuum = false;
+    let Ok((io, conn)) = Connection::from_uri(
+        path,
+        indexes,
+        mvcc,
+        views,
+        strict,
+        encryption,
+        custom_modules,
+        autovacuum,
+    ) else {
         panic!("Failed to open connection with path: {path}");
     };
     TursoConn::new(conn, io).to_ptr()
