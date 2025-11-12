@@ -1022,6 +1022,30 @@ func TestUpsertReturning_databaseSQL_Prepared(t *testing.T) {
 	}
 }
 
+func TestInsertReturning(t *testing.T) {
+	db := openMem(t)
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS t (x)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	var returnedID int64
+	if err := db.QueryRow("INSERT INTO t VALUES (1) RETURNING x").Scan(&returnedID); err != nil {
+		t.Fatalf("queryrow/scan: %v", err)
+	}
+	if returnedID != 1 {
+		t.Fatalf("unexpected returnedId: %v", err)
+	}
+	t.Log(returnedID)
+	if err := db.QueryRow("SELECT * FROM t").Scan(&returnedID); err != nil {
+		t.Fatalf("queryrow/scan (conflict): %v", err)
+	}
+	if returnedID != 1 {
+		t.Fatalf("unexpected returnedId: %v", err)
+	}
+	t.Log(returnedID)
+}
+
 func TestUpsertReturning_databaseSQL_Prepared_ArgCountMismatch(t *testing.T) {
 	db := openMem(t)
 	createDatabasesTable(t, db)
