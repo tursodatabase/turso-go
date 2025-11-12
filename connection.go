@@ -447,6 +447,11 @@ func (tx *tursoTx) Commit() error {
 	defer stmt.Close()
 
 	_, err := stmt.Exec(nil)
+	if err != nil {
+		if connErr := tx.conn.getError(); connErr != nil {
+			err = connErr
+		}
+	}
 	return err
 }
 
