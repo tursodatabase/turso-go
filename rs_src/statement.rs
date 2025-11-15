@@ -1,6 +1,6 @@
+use crate::TursoConn;
 use crate::rows::TursoRows;
 use crate::types::{AllocPool, ResultCode, TursoValue};
-use crate::TursoConn;
 use std::cell::UnsafeCell;
 use std::ffi::{c_char, c_void};
 use std::num::NonZero;

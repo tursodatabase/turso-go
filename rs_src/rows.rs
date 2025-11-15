@@ -1,6 +1,6 @@
 use crate::{
-    types::{ResultCode, TursoValue},
     TursoConn,
+    types::{ResultCode, TursoValue},
 };
 use std::{
     cell::UnsafeCell,

@@ -24,18 +24,26 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
         println!("Path is null");
         return std::ptr::null_mut();
     }
-    let path = unsafe { std::ffi::CStr::from_ptr(path) };
-    let path = path.to_str().unwrap();
+
+    let path_str = unsafe { std::ffi::CStr::from_ptr(path) }
+        .to_str()
+        .unwrap_or_else(|_| {
+            eprintln!("Failed to convert path to string");
+            ""
+        });
+
     let _ = init_tracing();
+
     let indexes = true;
     let mvcc = false;
-    let encryption = false;
+    let encryption = true;
     let views = false;
     let strict = false;
     let custom_modules = false;
     let autovacuum = false;
-    let Ok((io, conn)) = Connection::from_uri(
-        path,
+
+    match Connection::from_uri(
+        path_str,
         indexes,
         mvcc,
         views,
@@ -43,10 +51,13 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
         encryption,
         custom_modules,
         autovacuum,
-    ) else {
-        panic!("Failed to open connection with path: {path}");
-    };
-    TursoConn::new(conn, io).to_ptr()
+    ) {
+        Ok((io, conn)) => TursoConn::new(conn, io).to_ptr(),
+        Err(e) => {
+            eprintln!("Connection::from_uri failed: {:?}", e);
+            std::ptr::null_mut()
+        }
+    }
 }
 
 /// # Safety
