@@ -29,7 +29,7 @@ pub unsafe extern "C" fn db_open(path: *const c_char) -> *mut c_void {
     let _ = init_tracing();
     let indexes = true;
     let mvcc = false;
-    let encryption = false;
+    let encryption = true;
     let views = false;
     let strict = false;
     let custom_modules = false;
