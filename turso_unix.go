@@ -12,11 +12,9 @@ import (
 	"github.com/ebitengine/purego"
 )
 
-const libName = "libturso_go"
-
-func loadLibrary() (uintptr, error) {
+func loadLibrary(name string) (uintptr, error) {
 	// Try to extract embedded library first
-	libPath, err := extractEmbeddedLibrary()
+	libPath, err := extractEmbeddedLibrary(name)
 	if err == nil {
 		// Successfully extracted embedded library, try to load it
 		slib, dlerr := purego.Dlopen(libPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
@@ -33,9 +31,9 @@ func loadLibrary() (uintptr, error) {
 	var libraryName string
 	switch runtime.GOOS {
 	case "darwin":
-		libraryName = fmt.Sprintf("%s.dylib", libName)
+		libraryName = fmt.Sprintf("lib%s.dylib", name)
 	case "linux":
-		libraryName = fmt.Sprintf("%s.so", libName)
+		libraryName = fmt.Sprintf("lib%s.so", name)
 	default:
 		return 0, fmt.Errorf("GOOS=%s is not supported", runtime.GOOS)
 	}
@@ -58,5 +56,5 @@ func loadLibrary() (uintptr, error) {
 			return slib, nil
 		}
 	}
-	return 0, fmt.Errorf("%s library not found in LD_LIBRARY_PATH or CWD", libName)
+	return 0, fmt.Errorf("%s library not found in LD_LIBRARY_PATH or CWD", name)
 }

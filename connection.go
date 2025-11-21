@@ -64,7 +64,7 @@ var (
 // Register all the symbols on library load
 func ensureLibLoaded() error {
 	libOnce.Do(func() {
-		tursoLib, loadErr = loadLibrary()
+		tursoLib, loadErr = loadLibrary("turso_go")
 		if loadErr != nil {
 			return
 		}

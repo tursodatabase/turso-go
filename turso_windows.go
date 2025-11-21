@@ -11,11 +11,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const libName = "turso_go"
-
-func loadLibrary() (uintptr, error) {
+func loadLibrary(name string) (uintptr, error) {
 	// Try to extract embedded library first
-	libPath, err := extractEmbeddedLibrary()
+	libPath, err := extractEmbeddedLibrary(name)
 	if err == nil {
 		// Successfully extracted embedded library, try to load it
 		slib, dlerr := windows.LoadLibrary(libPath)
@@ -29,7 +27,7 @@ func loadLibrary() (uintptr, error) {
 	}
 
 	// Fall back to original behavior
-	libraryName := fmt.Sprintf("%s.dll", libName)
+	libraryName := fmt.Sprintf("%s.dll", name)
 
 	pathEnv := os.Getenv("PATH")
 	paths := strings.Split(pathEnv, ";")
