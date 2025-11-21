@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 )
@@ -623,14 +624,14 @@ func bindOne(stmt TursoStatement, idx int32, v any) error {
 		return sqlite3_bind_int64(stmt, idx, int64(val))
 	case uint64:
 		// sqlite3 integers are signed 64-bit. Ensure range fits.
-		if val > uint64(^int64(0)) {
+		if val > math.MaxInt64 {
 			return fmt.Errorf("unsigned integer out of range for sqlite int64: %d", val)
 		}
 		return sqlite3_bind_int64(stmt, idx, int64(val))
 	case uint32:
 		return sqlite3_bind_int64(stmt, idx, int64(val))
 	case uint:
-		if uint64(val) > uint64(^int64(0)) {
+		if uint64(val) > math.MaxInt64 {
 			return fmt.Errorf("unsigned integer out of range for sqlite int64: %d", val)
 		}
 		return sqlite3_bind_int64(stmt, idx, int64(val))
