@@ -24,7 +24,8 @@ Naming:
 * Use `sqlite3_.*` or `libsql_.*` naming convention for function names
   - For C functions, prepend `c_` prefix to the variable name
 * Use exactly same names for functions as in Rust bindings (with `c_` prefix for purego functions). Do not add anything extra
-* Emit **all** methods (do not foget about `sqlite_value_*` methods - they will be useful in other extensions of Go SDK)
+* Emit **all** methods which has implementation in Rust (e.g. not stub!())
+  - Do not foget about `sqlite_value_*` methods - they will be useful in other extensions of Go SDK
 
 Structure:
 * Introduce necessary constants which are used in the public API of the bindings (return codes, parameters, default strings, etc)
