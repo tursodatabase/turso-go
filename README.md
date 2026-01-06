@@ -1,3 +1,9 @@
+## **NOTE:** 
+>*This Repository is archived and has moved back to the original [turso](https://github.com/tursodatabase/turso) repo.*
+
+**Those wishing to install and use `tursodb` can now use `go get turso.tech/database/tursogo`**
+
+
 <p align="center">
   <img src="assets/turso.png" alt="Turso Database" width="800"/>
   <h1 align="center">Turso Database Go Driver</h1>
